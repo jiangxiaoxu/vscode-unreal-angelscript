@@ -196,7 +196,7 @@ export function activate(context: ExtensionContext) {
     {
         const toolDisposable = lm.registerTool(
             {
-                name: "angelscript.searchApi",
+                name: "angelscript_searchApi",
                 description: "Search the Angelscript API database and return matching symbols.",
                 inputSchema: {
                     type: "object",

@@ -15,7 +15,7 @@
     "activationEvents": [
         "onDebug",
         "onLanguage:angelscript",
-        "onLanguageModelTool:angelscript.searchApi"
+        "onLanguageModelTool:angelscript_searchApi"
     ],
     "repository": {
         "type": "git",
@@ -32,37 +32,43 @@
                 }
             ]
         },
-        "languageModels": {
-            "tools": [
-                {
-                    "name": "angelscript.searchApi",
-                    "displayName": "Angelscript API Search",
-                    "description": "Search the Angelscript API database for symbols and documentation.",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "Search query text for Angelscript API symbols."
-                            },
-                            "limit": {
-                                "type": "number",
-                                "description": "Maximum number of results to return (1-100).",
-                                "default": 50
-                            },
-                            "includeDetails": {
-                                "type": "boolean",
-                                "description": "Include documentation details for top matches.",
-                                "default": true
-                            }
+        "languageModelTools": [
+            {
+                "name": "angelscript_searchApi",
+                "tags": [
+                    "angelscript",
+                    "api",
+                    "search"
+                ],
+                "toolReferenceName": "asSearch",
+                "displayName": "Angelscript API Search",
+                "modelDescription": "Search the Angelscript API database for symbols and documentation. Provide a query string and optionally limit the results or include documentation details.",
+                "canBeReferencedInPrompt": true,
+                "icon": "$(search)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query text for Angelscript API symbols."
                         },
-                        "required": [
-                            "query"
-                        ]
-                    }
+                        "limit": {
+                            "type": "number",
+                            "description": "Maximum number of results to return (1-100).",
+                            "default": 50
+                        },
+                        "includeDetails": {
+                            "type": "boolean",
+                            "description": "Include documentation details for top matches.",
+                            "default": true
+                        }
+                    },
+                    "required": [
+                        "query"
+                    ]
                 }
-            ]
-        },
+            }
+        ],
         "views": {
             "angelscript-api": [
                 {
