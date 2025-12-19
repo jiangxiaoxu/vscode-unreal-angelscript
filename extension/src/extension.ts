@@ -233,59 +233,74 @@ export function activate(context: ExtensionContext) {
                     };
                 }
 
-                await startedClient;
-                const limit = typeof request?.limit === "number"
-                    ? Math.min(Math.max(Math.floor(request.limit), 1), 100)
-                    : 50;
-                const results = await client.sendRequest(GetAPISearchRequest, query);
-                if (!results || results.length === 0)
+                try
                 {
+                    await startedClient;
+                    const limit = typeof request?.limit === "number"
+                        ? Math.min(Math.max(Math.floor(request.limit), 1), 100)
+                        : 50;
+                    const results = await client.sendRequest(GetAPISearchRequest, query);
+                    if (!results || results.length === 0)
+                    {
+                        return {
+                            content: [
+                                {
+                                    kind: "markdown",
+                                    value: `No Angelscript API results for \`${query}\`.`
+                                }
+                            ]
+                        };
+                    }
+
+                    const items = results.slice(0, limit);
+                    let text = "## Angelscript API search results\n\n";
+                    text += `Query: \`${query}\`\n\n`;
+                    for (const item of items)
+                    {
+                        text += `- \`${item.label}\``;
+                        if (item.type)
+                            text += ` _(${item.type})_`;
+                        text += "\n";
+                    }
+
+                    if (results.length > limit)
+                        text += `\n...and ${results.length - limit} more results.\n`;
+
+                    if (request?.includeDetails !== false)
+                    {
+                        const detailItems = items.slice(0, Math.min(items.length, 5));
+                        for (const item of detailItems)
+                        {
+                            const details = await client.sendRequest(GetAPIDetailsRequest, item.data);
+                            if (details)
+                            {
+                                text += `\n### ${item.label}\n\n`;
+                                text += `${details}\n`;
+                            }
+                        }
+                    }
+
                     return {
                         content: [
                             {
                                 kind: "markdown",
-                                value: `No Angelscript API results for \`${query}\`.`
+                                value: text
                             }
                         ]
                     };
                 }
-
-                const items = results.slice(0, limit);
-                let text = "## Angelscript API search results\n\n";
-                text += `Query: \`${query}\`\n\n`;
-                for (const item of items)
+                catch (error)
                 {
-                    text += `- \`${item.label}\``;
-                    if (item.type)
-                        text += ` _(${item.type})_`;
-                    text += "\n";
+                    console.error("angelscript_searchApi tool failed:", error);
+                    return {
+                        content: [
+                            {
+                                kind: "markdown",
+                                value: "The Angelscript API tool failed to run. Please ensure the language server is running and try again."
+                            }
+                        ]
+                    };
                 }
-
-                if (results.length > limit)
-                    text += `\n...and ${results.length - limit} more results.\n`;
-
-                if (request?.includeDetails !== false)
-                {
-                    const detailItems = items.slice(0, Math.min(items.length, 5));
-                    for (const item of detailItems)
-                    {
-                        const details = await client.sendRequest(GetAPIDetailsRequest, item.data);
-                        if (details)
-                        {
-                            text += `\n### ${item.label}\n\n`;
-                            text += `${details}\n`;
-                        }
-                    }
-                }
-
-                return {
-                    content: [
-                        {
-                            kind: "markdown",
-                            value: text
-                        }
-                    ]
-                };
             }
         );
         context.subscriptions.push(toolDisposable);

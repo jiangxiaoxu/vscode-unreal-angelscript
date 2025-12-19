@@ -6,7 +6,7 @@
     "publisher": "Hazelight",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
-        "vscode": "^1.88.0"
+        "vscode": "^1.100.0"
     },
     "categories": [
         "Programming Languages",
