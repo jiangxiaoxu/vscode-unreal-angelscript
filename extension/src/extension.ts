@@ -49,7 +49,7 @@ export function activate(context: ExtensionContext) {
 
     // Create the language client and start the client.
     let client = new LanguageClient('angelscriptLanguageServer', 'Angelscript Language Server', serverOptions, clientOptions)
-    let started_client = client.start();
+    const startedClient = client.start();
 
     client.onNotification("angelscript/wantSave", (uri : string) => {
         setTimeout(() => vscode.workspace.saveAll(), 100);
@@ -233,7 +233,7 @@ export function activate(context: ExtensionContext) {
                     };
                 }
 
-                await client.onReady();
+                await startedClient;
                 const limit = typeof request?.limit === "number"
                     ? Math.min(Math.max(Math.floor(request.limit), 1), 100)
                     : 50;
