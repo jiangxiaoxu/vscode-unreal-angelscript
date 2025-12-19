@@ -6,7 +6,7 @@
     "publisher": "Hazelight",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
-        "vscode": "^1.65.0"
+        "vscode": "^1.100.0"
     },
     "categories": [
         "Programming Languages",
@@ -14,7 +14,8 @@
     ],
     "activationEvents": [
         "onDebug",
-        "onLanguage:angelscript"
+        "onLanguage:angelscript",
+        "onLanguageModelTool:angelscript_searchApi"
     ],
     "repository": {
         "type": "git",
@@ -31,6 +32,45 @@
                 }
             ]
         },
+        "languageModelTools": [
+            {
+                "name": "angelscript_searchApi",
+                "tags": [
+                    "angelscript",
+                    "api",
+                    "search"
+                ],
+                "toolReferenceName": "asSearch",
+                "displayName": "Angelscript API Search",
+                "modelDescription": "Search the Angelscript API database for symbols and documentation. Provide a query string and optionally limit the results or include documentation details.",
+                "canBeReferencedInPrompt": true,
+                "icon": "$(search)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query text for Angelscript API symbols."
+                        },
+                        "limit": {
+                            "type": "number",
+                            "description": "Maximum number of results to return (1-1000).",
+                            "default": 500,
+                            "minimum": 1,
+                            "maximum": 1000
+                        },
+                        "includeDetails": {
+                            "type": "boolean",
+                            "description": "Include documentation details for top matches.",
+                            "default": true
+                        }
+                    },
+                    "required": [
+                        "query"
+                    ]
+                }
+            }
+        ],
         "views": {
             "angelscript-api": [
                 {
@@ -702,6 +742,7 @@
         "eslint": "^7.23.0",
         "mocha": "^11.7.1",
         "peggy": "^3.0.2",
-        "typescript": "^4.6.2"
+        "typescript": "^4.6.2",
+        "vsce": "^2.15.0"
     }
 }

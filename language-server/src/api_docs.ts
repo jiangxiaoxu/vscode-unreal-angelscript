@@ -2,14 +2,14 @@ import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import * as documentation from './documentation';
 
-export function GetAPIList(root : string) : any
+export function GetAPIList(root: string): any
 {
-    let list : any[] = [];
+    let list: any[] = [];
 
     // Strip away the prefixes that are needed for cases where a namespace and a property with the same name can both exist next to each other
     root = root.replace(/__(ns|fun|prop)_/, "");
 
-    let addType = function(type : typedb.DBType | typedb.DBNamespace)
+    let addType = function (type: typedb.DBType | typedb.DBNamespace)
     {
         if (type instanceof typedb.DBNamespace)
         {
@@ -22,7 +22,7 @@ export function GetAPIList(root : string) : any
                     "type": "namespace",
                     "id": childNamespace.getQualifiedNamespace(),
                     "data": ["namespace", childNamespace.getQualifiedNamespace()],
-                    "label": childNamespace.getQualifiedNamespace()+"::",
+                    "label": childNamespace.getQualifiedNamespace() + "::",
                 });
             }
 
@@ -41,7 +41,7 @@ export function GetAPIList(root : string) : any
             }
         }
 
-        type.forEachSymbol(function (symbol : typedb.DBSymbol)
+        type.forEachSymbol(function (symbol: typedb.DBSymbol)
         {
             if (symbol instanceof typedb.DBMethod)
             {
@@ -49,7 +49,7 @@ export function GetAPIList(root : string) : any
                     return;
                 list.push({
                     "type": "function",
-                    "label": symbol.name+"()",
+                    "label": symbol.name + "()",
                     "id": symbol.id.toString(),
                     "data": ["function", symbol.namespace.getQualifiedNamespace() + "::" + symbol.name, symbol.id],
                 });
@@ -82,7 +82,7 @@ export function GetAPIList(root : string) : any
     return list;
 }
 
-export function GetAPIDetails(data : any) : any
+export function GetAPIDetails(data: any): any
 {
     if (data[0] == "namespace")
     {
@@ -94,8 +94,8 @@ export function GetAPIDetails(data : any) : any
     }
     else if (data[0] == "function" || data[0] == "method")
     {
-        let method : typedb.DBMethod;
-        let symbols : Array<typedb.DBSymbol>;
+        let method: typedb.DBMethod;
+        let symbols: Array<typedb.DBSymbol>;
         let method_id = 0;
         if (data[0] == "function")
         {
@@ -158,13 +158,13 @@ export function GetAPIDetails(data : any) : any
         if (method.args && method.args.length > 0)
         {
             details += "(";
-            for(let i = 0; i < method.args.length; ++i)
+            for (let i = 0; i < method.args.length; ++i)
             {
                 if (method.isMixin && i == 0)
                     continue;
                 details += "\n\t\t";
                 details += method.args[i].format();
-                if (i+1 < method.args.length)
+                if (i + 1 < method.args.length)
                     details += ",";
             }
             details += "\n)";
@@ -189,9 +189,9 @@ export function GetAPIDetails(data : any) : any
         {
             if (symbol instanceof typedb.DBProperty)
             {
-                let details = "```angelscript_snippet\n"+symbol.format(
-                    symbol.namespace.getQualifiedNamespace()+"::"
-                )+"\n```\n";
+                let details = "```angelscript_snippet\n" + symbol.format(
+                    symbol.namespace.getQualifiedNamespace() + "::"
+                ) + "\n```\n";
                 details += documentation.FormatPropertyDocumentation(symbol.documentation);
 
                 return details;
@@ -208,9 +208,9 @@ export function GetAPIDetails(data : any) : any
         {
             if (symbol instanceof typedb.DBProperty)
             {
-                let details = "```angelscript_snippet\n"+symbol.format(
-                    symbol.containingType.getQualifiedTypenameInNamespace(null)+"."
-                )+"\n```\n";
+                let details = "```angelscript_snippet\n" + symbol.format(
+                    symbol.containingType.getQualifiedTypenameInNamespace(null) + "."
+                ) + "\n```\n";
                 details += documentation.FormatPropertyDocumentation(symbol.documentation);
 
                 return details;
@@ -221,37 +221,42 @@ export function GetAPIDetails(data : any) : any
     return "";
 }
 
-export function GetAPISearch(filter : string) : any
+export function GetAPISearch(filter: string): any
 {
-    let list : any[] = [];
-    let phrases = new Array<string>();
-
-    for (let phrase of filter.split(" "))
+    let list: any[] = [];
+    let phraseGroups: Array<Array<string>> = [];
+    for (let rawGroup of filter.split("|"))
     {
-        if (phrase.length > 0)
-            phrases.push(phrase.toLowerCase());
+        let group = new Array<string>();
+        for (let phrase of rawGroup.split(" "))
+        {
+            let trimmed = phrase.trim();
+            if (trimmed.length > 0)
+                group.push(trimmed.toLowerCase());
+        }
+
+        if (group.length > 0)
+            phraseGroups.push(group);
     }
 
-    if (phrases.length == 0)
+    if (phraseGroups.length == 0)
         return [];
 
-    let filter_lower = filter.toLowerCase();
-
-    let canComplete = function(name : string)
+    let groupMatches = function (name: string, group: Array<string>)
     {
         let hadLongMatch = false;
-        for (let i = 0; i < phrases.length; ++i)
+        let lowerName = name.toLowerCase();
+        for (let phrase of group)
         {
-            let phrase = phrases[i];
             if (phrase.length < 3 && !hadLongMatch)
             {
-                if (!name.toLowerCase().startsWith(phrase))
+                if (!lowerName.startsWith(phrase))
                     return false;
             }
             else
             {
                 hadLongMatch = true;
-                if (!name.toLowerCase().includes(phrase))
+                if (!lowerName.includes(phrase))
                     return false;
             }
         }
@@ -259,9 +264,21 @@ export function GetAPISearch(filter : string) : any
         return true;
     }
 
-    let searchType = function(type : typedb.DBType | typedb.DBNamespace)
+    let canComplete = function (name: string)
     {
-        let typePrefix : string = "";
+        for (let group of phraseGroups)
+        {
+            if (groupMatches(name, group))
+                return true;
+        }
+        return false;
+    }
+
+    let seenIds = new Set<string>();
+
+    let searchType = function (type: typedb.DBType | typedb.DBNamespace)
+    {
+        let typePrefix: string = "";
         let typeMatches = false;
         if (type instanceof typedb.DBNamespace)
         {
@@ -285,7 +302,7 @@ export function GetAPISearch(filter : string) : any
             typeMatches = canComplete(type.name);
         }
 
-        type.forEachSymbol(function (symbol : typedb.DBSymbol)
+        type.forEachSymbol(function (symbol: typedb.DBSymbol)
         {
             if (symbol instanceof typedb.DBMethod)
             {
@@ -303,16 +320,21 @@ export function GetAPISearch(filter : string) : any
                     else
                         symbol_id = ["function", symbol.name];
 
-                    let label = typePrefix+symbol.name+"()";
+                    let label = typePrefix + symbol.name + "()";
                     if (symbol.isMixin)
-                        label = symbol.args[0].typename+"."+symbol.name+"()";
+                        label = symbol.args[0].typename + "." + symbol.name + "()";
 
-                    list.push({
-                        "type": "function",
-                        "label": label,
-                        "id": symbol.id.toString(),
-                        "data": symbol_id,
-                    });
+                    let uniqueId = symbol_id.join("|");
+                    if (!seenIds.has(uniqueId))
+                    {
+                        seenIds.add(uniqueId);
+                        list.push({
+                            "type": "function",
+                            "label": label,
+                            "id": symbol.id.toString(),
+                            "data": symbol_id,
+                        });
+                    }
                 }
             }
             else if (symbol instanceof typedb.DBProperty)
@@ -327,12 +349,17 @@ export function GetAPISearch(filter : string) : any
                     else
                         symbol_id = ["global", symbol.name];
 
-                    list.push({
-                        "type": "property",
-                        "label": typePrefix+symbol.name,
-                        "id": typePrefix+symbol.name,
-                        "data": symbol_id,
-                    });
+                    let uniqueId = symbol_id.join("|");
+                    if (!seenIds.has(uniqueId))
+                    {
+                        seenIds.add(uniqueId);
+                        list.push({
+                            "type": "property",
+                            "label": typePrefix + symbol.name,
+                            "id": typePrefix + symbol.name,
+                            "data": symbol_id,
+                        });
+                    }
                 }
             }
             else if (symbol instanceof typedb.DBType)

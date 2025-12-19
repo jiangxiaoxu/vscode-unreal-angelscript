@@ -18,5 +18,21 @@
     "editor.tabSize": 4,
     "editor.detectIndentation": false,
 
-    "files.trimTrailingWhitespace": true
+    "files.trimTrailingWhitespace": true,
+
+    // Formatter settings: use built-in TS formatter and put opening brace on new line
+    "editor.formatOnSave": true,
+
+    "[typescript]": {
+        "editor.defaultFormatter": "vscode.typescript-language-features",
+        "editor.formatOnSave": true
+    },
+    "[typescriptreact]": {
+        "editor.defaultFormatter": "vscode.typescript-language-features"
+    },
+
+    "typescript.format.placeOpenBraceOnNewLineForFunctions": true,
+    "typescript.format.placeOpenBraceOnNewLineForControlBlocks": true,
+    "javascript.format.placeOpenBraceOnNewLineForFunctions": true,
+    "javascript.format.placeOpenBraceOnNewLineForControlBlocks": true
 }

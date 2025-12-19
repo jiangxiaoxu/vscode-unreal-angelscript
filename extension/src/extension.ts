@@ -21,7 +21,8 @@ const GetAPIRequest = new RequestType<any, any[], void>('angelscript/getAPI');
 const GetAPIDetailsRequest = new RequestType<any, string, void>('angelscript/getAPIDetails');
 const GetAPISearchRequest = new RequestType<any, any[], void>('angelscript/getAPISearch');
 
-export function activate(context: ExtensionContext) {
+export function activate(context: ExtensionContext)
+{
 
     // The server is implemented in node
     let serverModule = context.asAbsolutePath(path.join('language-server', 'out', 'server.js'));
@@ -31,14 +32,14 @@ export function activate(context: ExtensionContext) {
     // If the extension is launched in debug mode then the debug server options are used
     // Otherwise the run options are used
     let serverOptions: ServerOptions = {
-        run : { module: serverModule, transport: TransportKind.ipc },
+        run: { module: serverModule, transport: TransportKind.ipc },
         debug: { module: serverModule, transport: TransportKind.ipc, options: debugOptions }
     }
 
     // Options to control the language client
     let clientOptions: LanguageClientOptions = {
         // Register the server for plain text documents
-        documentSelector: [{scheme: 'file', language: 'angelscript'}],
+        documentSelector: [{ scheme: 'file', language: 'angelscript' }],
         synchronize: {
             fileEvents: workspace.createFileSystemWatcher('**/*.as'),
             configurationSection: "UnrealAngelscript",
@@ -49,9 +50,10 @@ export function activate(context: ExtensionContext) {
 
     // Create the language client and start the client.
     let client = new LanguageClient('angelscriptLanguageServer', 'Angelscript Language Server', serverOptions, clientOptions)
-    let started_client = client.start();
+    const startedClient = client.start();
 
-    client.onNotification("angelscript/wantSave", (uri : string) => {
+    client.onNotification("angelscript/wantSave", (uri: string) =>
+    {
         setTimeout(() => vscode.workspace.saveAll(), 100);
     });
 
@@ -64,7 +66,8 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(vscode.languages.registerEvaluatableExpressionProvider('angelscript', evaluatableExpressionProvider));
 
     // Register 'Go To Symbol'
-    let goToSymbol = vscode.commands.registerCommand('angelscript.goToSymbol', (location : any) => {
+    let goToSymbol = vscode.commands.registerCommand('angelscript.goToSymbol', (location: any) =>
+    {
         vscode.commands.executeCommand("editor.action.goToImplementation", location);
     });
 
@@ -79,7 +82,7 @@ export function activate(context: ExtensionContext) {
             let text_line = activeEditor.document.lineAt(line_number);
 
             let char_number = activeEditor.selection.active.character;
-            let char = text_line.text[char_number-1];
+            let char = text_line.text[char_number - 1];
 
             if (char == '(')
             {
@@ -89,9 +92,10 @@ export function activate(context: ExtensionContext) {
             else if (char == '.')
             {
                 // Replace the single dot from the commit character with a call
-                activeEditor.edit((edit: vscode.TextEditorEdit) => {
-                        edit.insert(new vscode.Position(line_number, char_number-1), "()");
-                    },
+                activeEditor.edit((edit: vscode.TextEditorEdit) =>
+                {
+                    edit.insert(new vscode.Position(line_number, char_number - 1), "()");
+                },
                     {
                         undoStopBefore: false,
                         undoStopAfter: true,
@@ -124,7 +128,7 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(completionParen);
 
     let saveAndCreateBlueprint = vscode.commands.registerCommand('angelscript.saveAndCreateBlueprint',
-        function(uri : string, className : string)
+        function (uri: string, className: string)
         {
             let activeEditor = vscode.window.activeTextEditor;
             if (activeEditor != null)
@@ -132,9 +136,9 @@ export function activate(context: ExtensionContext) {
                 if (activeEditor.document.isDirty)
                 {
                     activeEditor.document.save().then(
-                        function(success : boolean)
+                        function (success: boolean)
                         {
-                            setTimeout(function()
+                            setTimeout(function ()
                             {
                                 vscode.commands.executeCommand('angelscript.createBlueprint', className);
                             }, 300);
@@ -150,7 +154,7 @@ export function activate(context: ExtensionContext) {
     context.subscriptions.push(saveAndCreateBlueprint);
 
     let saveAndEditAsset = vscode.commands.registerCommand('angelscript.saveAndEditAsset',
-        function(uri : string, assetPath : string)
+        function (uri: string, assetPath: string)
         {
             let activeEditor = vscode.window.activeTextEditor;
             if (activeEditor != null)
@@ -158,9 +162,9 @@ export function activate(context: ExtensionContext) {
                 if (activeEditor.document.isDirty)
                 {
                     activeEditor.document.save().then(
-                        function(success : boolean)
+                        function (success: boolean)
                         {
-                            setTimeout(function()
+                            setTimeout(function ()
                             {
                                 vscode.commands.executeCommand('angelscript.editAsset', assetPath);
                             }, 300);
@@ -186,20 +190,127 @@ export function activate(context: ExtensionContext) {
     vscode.window.registerTreeDataProvider("angelscript-api-list", apiTree);
     vscode.window.registerWebviewViewProvider("angelscript-api-search", apiSearch);
     vscode.window.registerWebviewViewProvider("angelscript-api-details", apiDetails);
-    vscode.commands.registerCommand("angelscript-api-list.view-details", function (data : any)
+    vscode.commands.registerCommand("angelscript-api-list.view-details", function (data: any)
     {
         apiDetails.showDetails(data);
     });
+
+    const lm = (vscode as any).lm;
+    if (lm?.registerTool)
+    {
+        const toolDisposable = vscode.lm.registerTool(
+            "angelscript_searchApi",
+            new AngelscriptSearchApiTool(client, startedClient)
+        );
+        context.subscriptions.push(toolDisposable);
+    }
+}
+
+type AngelscriptSearchParams = {
+    query: string;
+    limit?: number;
+    includeDetails?: boolean;
+};
+
+class AngelscriptSearchApiTool implements vscode.LanguageModelTool<AngelscriptSearchParams>
+{
+    client: LanguageClient;
+    startedClient: Promise<void>;
+
+    constructor(client: LanguageClient, startedClient: Promise<void>)
+    {
+        this.client = client;
+        this.startedClient = startedClient;
+    }
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<AngelscriptSearchParams>,
+        token: CancellationToken
+    ): Promise<vscode.LanguageModelToolResult>
+    {
+        const query = typeof options?.input?.query === "string" ? options.input.query.trim() : "";
+        if (!query)
+        {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart("No query provided. Please supply a search query.")
+            ]);
+        }
+
+        try
+        {
+            await this.startedClient;
+            const limit = typeof options?.input?.limit === "number"
+                ? Math.min(Math.max(Math.floor(options.input.limit), 1), 1000)
+                : 500;
+            const includeDetails = options?.input?.includeDetails !== false;
+            const results = await this.client.sendRequest(GetAPISearchRequest, query);
+            if (!results || results.length === 0)
+            {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(`No Angelscript API results for "${query}".`)
+                ]);
+            }
+
+            const items = results.slice(0, limit);
+            const payload: {
+                query: string;
+                total: number;
+                returned: number;
+                truncated: boolean;
+                items: Array<{ label: string; type?: string; data?: unknown }>;
+                details?: Array<{ label: string; details?: string }>;
+            } = {
+                query,
+                total: results.length,
+                returned: items.length,
+                truncated: results.length > items.length,
+                items: items.map((item: any) => ({
+                    label: item.label,
+                    type: item.type ?? undefined,
+                    data: item.data ?? undefined
+                }))
+            };
+
+            if (includeDetails)
+            {
+                payload.details = [];
+                const detailItems = items.slice(0, Math.min(items.length, 5));
+                for (const item of detailItems)
+                {
+                    if (token.isCancellationRequested)
+                        break;
+                    const details = await this.client.sendRequest(GetAPIDetailsRequest, item.data);
+                    payload.details.push({
+                        label: item.label,
+                        details: details ?? undefined
+                    });
+                }
+            }
+
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(JSON.stringify(payload, null, 2))
+            ]);
+        }
+        catch (error)
+        {
+            console.error("angelscript_searchApi tool failed:", error);
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(
+                    "The Angelscript API tool failed to run. Please ensure the language server is running and try again."
+                )
+            ]);
+        }
+    }
 }
 
 class ASApiSearchProvider implements vscode.WebviewViewProvider
 {
-    webview : vscode.Webview;
-    client : LanguageClient;
-    searchHtml : string;
-    tree : ASApiTreeProvider;
+    webview: vscode.Webview;
+    client: LanguageClient;
+    searchHtml: string;
+    tree: ASApiTreeProvider;
 
-    constructor(client : LanguageClient)
+    constructor(client: LanguageClient)
     {
         this.client = client;
         this.searchHtml = `
@@ -234,13 +345,13 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
         webviewView.webview.html = this.searchHtml;
 
         let searchProvider = this;
-        webviewView.webview.onDidReceiveMessage(function (data : any)
+        webviewView.webview.onDidReceiveMessage(function (data: any)
         {
             searchProvider.onMessage(data);
         });
     }
 
-    onMessage(data : any)
+    onMessage(data: any)
     {
         this.tree.search = data as string;
         this.tree.refresh();
@@ -249,10 +360,10 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
 
 class ASApiDetailsProvider implements vscode.WebviewViewProvider
 {
-    webview : vscode.Webview;
-    client : LanguageClient;
+    webview: vscode.Webview;
+    client: LanguageClient;
 
-    constructor(client : LanguageClient)
+    constructor(client: LanguageClient)
     {
         this.client = client;
     }
@@ -263,11 +374,11 @@ class ASApiDetailsProvider implements vscode.WebviewViewProvider
         webviewView.webview.html = "<em>Select API to see details...</em>";
     }
 
-    showDetails(data : any)
+    showDetails(data: any)
     {
         let webview = this.webview;
         this.client.sendRequest(GetAPIDetailsRequest, data).then(
-            async function (details : string)
+            async function (details: string)
             {
                 let detailsHtml = await vscode.commands.executeCommand("markdown.api.render", details) as string;
                 detailsHtml = `
@@ -298,13 +409,13 @@ class ASApiDetailsProvider implements vscode.WebviewViewProvider
 
 class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
 {
-    client : LanguageClient;
-    search : string;
+    client: LanguageClient;
+    search: string;
 
     private _onDidChangeTreeData: vscode.EventEmitter<ASApiItem | undefined | void> = new vscode.EventEmitter<ASApiItem | undefined | void>();
-	readonly onDidChangeTreeData: vscode.Event<ASApiItem | undefined | void> = this._onDidChangeTreeData.event;
+    readonly onDidChangeTreeData: vscode.Event<ASApiItem | undefined | void> = this._onDidChangeTreeData.event;
 
-    constructor(client : LanguageClient)
+    constructor(client: LanguageClient)
     {
         this.client = client;
     }
@@ -319,7 +430,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
         return element;
     }
 
-    getChildren(element?: ASApiItem) : Thenable<ASApiItem[]>
+    getChildren(element?: ASApiItem): Thenable<ASApiItem[]>
     {
         let request;
         if (element)
@@ -330,7 +441,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
             request = this.client.sendRequest(GetAPIRequest, "");
 
         return request.then(
-            function (values : any[])
+            function (values: any[])
             {
                 let items = new Array<ASApiItem>();
                 for (let api of values)
@@ -338,7 +449,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                     if (api.type == "namespace")
                     {
                         // In case of nested namespaces, only take the rightmost namespace name as a label
-                        let label : string = api.label;
+                        let label: string = api.label;
                         if (label.indexOf("::") != -1)
                         {
                             let parts = label.split("::");
@@ -389,7 +500,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
     resolveTreeItem(item: vscode.TreeItem, element: ASApiItem, token: CancellationToken): ProviderResult<vscode.TreeItem>
     {
         return this.client.sendRequest(GetAPIDetailsRequest, element.data).then(
-            function (details : string)
+            function (details: string)
             {
                 element.tooltip = new vscode.MarkdownString(details);
                 element.tooltip.supportHtml = true;
@@ -401,12 +512,13 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
 
 class ASApiItem extends vscode.TreeItem
 {
-    type : string;
-    data : any;
+    type: string;
+    data: any;
 }
 
 
-class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
+class ASConfigurationProvider implements vscode.DebugConfigurationProvider
+{
 
     private _server?: Net.Server;
     private _config?: DebugConfiguration;
@@ -420,7 +532,7 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
         if (!config.type && !config.request && !config.name)
         {
             const editor = vscode.window.activeTextEditor;
-            if (editor && editor.document.languageId === 'angelscript' )
+            if (editor && editor.document.languageId === 'angelscript')
             {
                 config.type = 'angelscript';
                 config.name = 'Debug Angelscript';
@@ -434,9 +546,11 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
 
         // start port listener on launch of first debug session
         // or if the port changed
-        if (!this._server || (this._server && (port != this._config.port || hostname != this._config.hostname))) {
+        if (!this._server || (this._server && (port != this._config.port || hostname != this._config.hostname)))
+        {
             // start listening on a random port
-            this._server = Net.createServer(socket => {
+            this._server = Net.createServer(socket =>
+            {
                 const session = new ASDebugSession();
                 session.setRunAsServer(true);
 
@@ -467,8 +581,10 @@ class ASConfigurationProvider implements vscode.DebugConfigurationProvider {
         return config;
     }
 
-    dispose() {
-        if (this._server) {
+    dispose()
+    {
+        if (this._server)
+        {
             this._server.close();
         }
     }
@@ -517,9 +633,9 @@ class ASEvaluateableExpressionProvider implements vscode.EvaluatableExpressionPr
                     {
                         stop = true;
                     }
-                break;
+                    break;
                 case ']':
-                    if (start+1 < lineContent.length && lineContent[start+1] == '.')
+                    if (start + 1 < lineContent.length && lineContent[start + 1] == '.')
                     {
                         depth += 1;
                     }
@@ -527,7 +643,7 @@ class ASEvaluateableExpressionProvider implements vscode.EvaluatableExpressionPr
                     {
                         stop = true;
                     }
-                break;
+                    break;
                 case '[':
                     if (depth == 0)
                     {
@@ -537,7 +653,7 @@ class ASEvaluateableExpressionProvider implements vscode.EvaluatableExpressionPr
                     {
                         depth -= 1;
                     }
-                break;
+                    break;
             }
 
             if (stop)
