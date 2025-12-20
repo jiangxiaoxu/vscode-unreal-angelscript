@@ -1,6 +1,7 @@
 'use strict';
 
-import {
+import
+{
     IPCMessageReader, IPCMessageWriter, createConnection, Connection, TextDocuments,
     Diagnostic, DiagnosticSeverity, InitializeResult, TextDocumentPositionParams, CompletionItem,
     CompletionItemKind, SignatureHelp, Hover, DocumentSymbolParams, SymbolInformation,
@@ -48,7 +49,8 @@ import * as api_docs from './api_docs';
 import * as fs from 'fs';
 import * as glob from 'glob';
 
-import {
+import
+{
     Message, MessageType, readMessages, buildGoTo,
     buildDisconnect, buildOpenAssets, buildCreateBlueprint
 } from './unreal-buffers';
@@ -57,27 +59,27 @@ import {
 let connection: Connection = createConnection(new IPCMessageReader(process), new IPCMessageWriter(process));
 
 // Create a connection to unreal
-let unreal : Socket;
+let unreal: Socket;
 
 const hostname = "127.0.0.1";
-let port : number = 27099;
+let port: number = 27099;
 
-let ParseQueue : Array<scriptfiles.ASModule> = [];
+let ParseQueue: Array<scriptfiles.ASModule> = [];
 let ParseQueueIndex = 0;
-let LoadQueue : Array<scriptfiles.ASModule> = [];
+let LoadQueue: Array<scriptfiles.ASModule> = [];
 let LoadQueueIndex = 0;
-let PostProcessTypesQueue : Array<scriptfiles.ASModule> = [];
+let PostProcessTypesQueue: Array<scriptfiles.ASModule> = [];
 let PostProcessTypesQueueIndex = 0;
-let ResolveQueue : Array<scriptfiles.ASModule> = [];
+let ResolveQueue: Array<scriptfiles.ASModule> = [];
 let ResolveQueueIndex = 0;
 let IsServicingQueues = false;
 
-let ReceivingTypesTimeout : any = null;
+let ReceivingTypesTimeout: any = null;
 let SetTypeTimeout = false;
 let UnrealTypesTimedOut = false;
 
-let settings : any = null;
-let reconnectTimeoutId : any = undefined;
+let settings: any = null;
+let reconnectTimeoutId: any = undefined;
 
 function connect_unreal()
 {
@@ -97,8 +99,9 @@ function connect_unreal()
     }
     unreal = new Socket;
 
-    unreal.on("data", function(data : Buffer) {
-        let messages : Array<Message> = readMessages(data);
+    unreal.on("data", function (data: Buffer)
+    {
+        let messages: Array<Message> = readMessages(data);
         for (let msg of messages)
         {
             if (msg.type == MessageType.Diagnostics)
@@ -124,14 +127,14 @@ function connect_unreal()
 
                     if (isInfo)
                     {
-                        let hasExisting : boolean = false;
-                        for(let diag of diagnostics)
+                        let hasExisting: boolean = false;
+                        for (let diag of diagnostics)
                         {
-                            if (diag.range.start.line == line-1)
+                            if (diag.range.start.line == line - 1)
                                 hasExisting = true;
                         }
 
-                        if(!hasExisting)
+                        if (!hasExisting)
                             continue;
                     }
 
@@ -141,8 +144,8 @@ function connect_unreal()
                     let diagnosic: Diagnostic = {
                         severity: isInfo ? DiagnosticSeverity.Information : (isError ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning),
                         range: {
-                            start: { line: line-1, character: 0 },
-                            end: { line: line-1, character: 10000 }
+                            start: { line: line - 1, character: 0 },
+                            end: { line: line - 1, character: 10000 }
                         },
                         message: message,
                         source: 'as'
@@ -152,7 +155,7 @@ function connect_unreal()
 
                 scriptdiagnostics.UpdateCompileDiagnostics(filename, diagnostics);
             }
-            else if(msg.type == MessageType.DebugDatabase)
+            else if (msg.type == MessageType.DebugDatabase)
             {
                 let dbStr = msg.readString();
                 let dbObj = JSON.parse(dbStr);
@@ -163,7 +166,7 @@ function connect_unreal()
                     clearTimeout(ReceivingTypesTimeout);
                 ReceivingTypesTimeout = setTimeout(DetectUnrealTypeListTimeout, 1000);
             }
-            else if(msg.type == MessageType.DebugDatabaseFinished)
+            else if (msg.type == MessageType.DebugDatabaseFinished)
             {
                 if (ReceivingTypesTimeout)
                     clearTimeout(ReceivingTypesTimeout);
@@ -175,7 +178,7 @@ function connect_unreal()
                 // Make sure no modules are resolved anymore
                 ReResolveAllModules();
             }
-            else if(msg.type == MessageType.AssetDatabase)
+            else if (msg.type == MessageType.AssetDatabase)
             {
                 let version = msg.readInt();
                 if (version == 1)
@@ -193,15 +196,15 @@ function connect_unreal()
                     }
                 }
             }
-            else if(msg.type == MessageType.AssetDatabaseInit)
+            else if (msg.type == MessageType.AssetDatabaseInit)
             {
                 // Remove all old asset info from the database, we're receiving new stuff
                 assets.ClearDatabase();
             }
-            else if(msg.type == MessageType.AssetDatabaseFinished)
+            else if (msg.type == MessageType.AssetDatabaseFinished)
             {
             }
-            else if(msg.type == MessageType.DebugDatabaseSettings)
+            else if (msg.type == MessageType.DebugDatabaseSettings)
             {
                 let version = msg.readInt();
 
@@ -228,11 +231,11 @@ function connect_unreal()
                     scriptSettings.disallowActorGenerics = msg.readBool();
                 }
             }
-            else if(msg.type == MessageType.ReplaceAssetDefinition)
+            else if (msg.type == MessageType.ReplaceAssetDefinition)
             {
                 let assetName = msg.readString();
                 let lineCount = msg.readInt();
-                let lines : Array<string> = [];
+                let lines: Array<string> = [];
                 for (let i = 0; i < lineCount; i += 1)
                     lines.push(msg.readString());
 
@@ -241,7 +244,8 @@ function connect_unreal()
         }
     });
 
-    unreal.on("error", function() {
+    unreal.on("error", function ()
+    {
         // connection.console.log('Reconnecting to unreal due to error');
         if (unreal != null)
         {
@@ -252,7 +256,8 @@ function connect_unreal()
         }
     });
 
-    unreal.on("close", function() {
+    unreal.on("close", function ()
+    {
         // connection.console.log('Ceconnecting to unreal due to close');
         if (unreal != null)
         {
@@ -263,10 +268,10 @@ function connect_unreal()
         }
     });
 
-    unreal.connect(port, hostname, function()
+    unreal.connect(port, hostname, function ()
     {
         // connection.console.log('Connection to unreal editor established.');
-        setTimeout(function()
+        setTimeout(function ()
         {
             if (!unreal)
                 return;
@@ -287,20 +292,24 @@ connect_unreal();
 // for open, change and close text document events
 
 let shouldSendDiagnosticRelatedInformation: boolean = false;
-let RootUris : string[] = [];
+let RootUris: string[] = [];
 
 // After the server has started the client sends an initialize request. The server receives
 // in the passed params the rootPath of the workspace plus the client capabilities.
-connection.onInitialize((_params): InitializeResult => {
+connection.onInitialize((_params): InitializeResult =>
+{
     shouldSendDiagnosticRelatedInformation = _params.capabilities && _params.capabilities.textDocument && _params.capabilities.textDocument.publishDiagnostics && _params.capabilities.textDocument.publishDiagnostics.relatedInformation;
 
     let Roots = [];
 
-    if (_params.workspaceFolders == null) {
+    if (_params.workspaceFolders == null)
+    {
         Roots.push(_params.rootPath);
         RootUris.push(decodeURIComponent(_params.rootUri));
-    } else {
-        for (let Workspace of _params.workspaceFolders) {
+    } else
+    {
+        for (let Workspace of _params.workspaceFolders)
+        {
             Roots.push(URI.parse(Workspace.uri).fsPath);
             RootUris.push(decodeURIComponent(Workspace.uri));
         }
@@ -334,7 +343,7 @@ connection.onInitialize((_params): InitializeResult => {
         });
 
         // Read templates
-        glob(RootPath+"/.vscode/templates/*.as.template", null, function(err : any, files : any)
+        glob(RootPath + "/.vscode/templates/*.as.template", null, function (err: any, files: any)
         {
             scriptlenses.LoadFileTemplates(files);
         });
@@ -381,7 +390,7 @@ connection.onInitialize((_params): InitializeResult => {
             },
             semanticTokensProvider: {
                 legend: {
-                    tokenTypes: scriptsemantics.SemanticTypeList.map(t => "as_"+t),
+                    tokenTypes: scriptsemantics.SemanticTypeList.map(t => "as_" + t),
                     tokenModifiers: [],
                 },
                 range: false,
@@ -389,7 +398,7 @@ connection.onInitialize((_params): InitializeResult => {
                     delta: true,
                 },
             },
-            colorProvider : <DocumentColorRegistrationOptions> {
+            colorProvider: <DocumentColorRegistrationOptions>{
                 documentSelector: null,
             },
             typeHierarchyProvider: true,
@@ -583,12 +592,14 @@ function IsInitialParseDone()
     return CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0;
 }
 
-scriptdiagnostics.OnDiagnosticsChanged( function (uri : string, diagnostics : Array<Diagnostic>){
+scriptdiagnostics.OnDiagnosticsChanged(function (uri: string, diagnostics: Array<Diagnostic>)
+{
     connection.sendDiagnostics({ "uri": uri, "diagnostics": diagnostics });
 });
 
-connection.onDidChangeWatchedFiles((_change) => {
-    for(let change of _change.changes)
+connection.onDidChangeWatchedFiles((_change) =>
+{
+    for (let change of _change.changes)
     {
         let module = scriptfiles.GetOrCreateModule(getModuleName(change.uri), getPathName(change.uri), change.uri);
         if (module)
@@ -614,7 +625,7 @@ connection.onDidChangeWatchedFiles((_change) => {
     }
 });
 
-function GetAndParseModule(uri : string) : scriptfiles.ASModule
+function GetAndParseModule(uri: string): scriptfiles.ASModule
 {
     let asmodule = scriptfiles.GetModuleByUri(uri);
     if (!asmodule)
@@ -629,7 +640,8 @@ function GetAndParseModule(uri : string) : scriptfiles.ASModule
     return asmodule;
 }
 
-connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
+connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): CompletionItem[] =>
+{
     let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
     if (!asmodule)
         return null;
@@ -640,7 +652,8 @@ connection.onCompletion((_textDocumentPosition: TextDocumentPositionParams): Com
     return completions;
 });
 
-connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+connection.onCompletionResolve((item: CompletionItem): CompletionItem =>
+{
     let resolvedItem = parsedcompletion.Resolve(item);
     if (resolvedItem)
         return resolvedItem;
@@ -648,7 +661,8 @@ connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
         return item;
 });
 
-connection.onSignatureHelp((_textDocumentPosition: TextDocumentPositionParams): SignatureHelp => {
+connection.onSignatureHelp((_textDocumentPosition: TextDocumentPositionParams): SignatureHelp =>
+{
     let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
     if (!asmodule)
         return null;
@@ -656,7 +670,8 @@ connection.onSignatureHelp((_textDocumentPosition: TextDocumentPositionParams): 
     return help;
 });
 
-connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Definition | null => {
+connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Definition | null =>
+{
     let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
     if (!asmodule)
         return null;
@@ -668,7 +683,8 @@ connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Def
     return definitions;
 });
 
-connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams): Definition | null => {
+connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams): Definition | null =>
+{
     let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
     if (!asmodule)
         return null;
@@ -693,7 +709,8 @@ connection.onImplementation((_textDocumentPosition: TextDocumentPositionParams):
     return null;
 });
 
-connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover => {
+connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover =>
+{
     let asmodule = GetAndParseModule(_textDocumentPosition.textDocument.uri);
     if (!asmodule)
         return null;
@@ -702,22 +719,25 @@ connection.onHover((_textDocumentPosition: TextDocumentPositionParams): Hover =>
     return scriptsymbols.GetHover(asmodule, _textDocumentPosition.position);
 });
 
-connection.onDocumentSymbol((_params : DocumentSymbolParams) : DocumentSymbol[] => {
+connection.onDocumentSymbol((_params: DocumentSymbolParams): DocumentSymbol[] =>
+{
     let asmodule = GetAndParseModule(_params.textDocument.uri);
     if (!asmodule)
         return null;
     return scriptsymbols.DocumentSymbols(asmodule);
 });
 
-connection.onWorkspaceSymbol((_params : WorkspaceSymbolParams) : WorkspaceSymbol[] => {
+connection.onWorkspaceSymbol((_params: WorkspaceSymbolParams): WorkspaceSymbol[] =>
+{
     return scriptsymbols.WorkspaceSymbols(_params.query);
 });
 
-connection.onWorkspaceSymbolResolve((symbol : WorkspaceSymbol) : WorkspaceSymbol => {
+connection.onWorkspaceSymbolResolve((symbol: WorkspaceSymbol): WorkspaceSymbol =>
+{
     return scriptsymbols.ResolveWorkspaceSymbol(symbol);
 });
 
-connection.onReferences(function (params : ReferenceParams) : Location[] | Thenable<Location[]>
+connection.onReferences(function (params: ReferenceParams): Location[] | Thenable<Location[]>
 {
     if (!CanResolveModules())
         return null;
@@ -729,7 +749,8 @@ connection.onReferences(function (params : ReferenceParams) : Location[] | Thena
     if (result && result.value)
         return result.value;
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) =>
+    {
         let timerHandle = setInterval(MakeProgress, 1);
         function MakeProgress()
         {
@@ -743,14 +764,14 @@ connection.onReferences(function (params : ReferenceParams) : Location[] | Thena
     });
 });
 
-connection.onPrepareRename(function (params : PrepareRenameParams) : Range | ResponseError<void>
+connection.onPrepareRename(function (params: PrepareRenameParams): Range | ResponseError<void>
 {
     if (!CanResolveModules())
         return null;
     if (LoadQueue.length != 0)
         return null;
 
-    let result : Range | ResponseError<void> = null;
+    let result: Range | ResponseError<void> = null;
     if (!CanResolveModules())
         result = new ResponseError<void>(0, "Please wait for all script parsing to finish...");
     else
@@ -759,7 +780,7 @@ connection.onPrepareRename(function (params : PrepareRenameParams) : Range | Res
     return result;
 });
 
-connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit | Thenable<WorkspaceEdit>
+connection.onRenameRequest(function (params: RenameParams): WorkspaceEdit | Thenable<WorkspaceEdit>
 {
     if (!CanResolveModules())
         return null;
@@ -767,7 +788,8 @@ connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit | Th
         return null;
 
     let generator = scriptreferences.PerformRename(params.textDocument.uri, params.position, params.newName);
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) =>
+    {
         let timerHandle = setInterval(MakeProgress, 1);
         function MakeProgress()
         {
@@ -776,7 +798,7 @@ connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit | Th
             {
                 clearInterval(timerHandle);
 
-                let workspaceEdit : WorkspaceEdit = {};
+                let workspaceEdit: WorkspaceEdit = {};
                 workspaceEdit.changes = {};
                 for (let [uri, edits] of result.value)
                     workspaceEdit.changes[uri] = edits;
@@ -786,14 +808,14 @@ connection.onRenameRequest(function (params : RenameParams) : WorkspaceEdit | Th
     });
 });
 
-connection.onDocumentHighlight(function (params : DocumentHighlightParams) : Array<DocumentHighlight>
+connection.onDocumentHighlight(function (params: DocumentHighlightParams): Array<DocumentHighlight>
 {
     if (!CanResolveModules())
         return null
     return scriptoccurances.HighlightOccurances(params.textDocument.uri, params.position);
 })
 
-connection.onCodeLens(function (params : CodeLensParams) : CodeLens[]
+connection.onCodeLens(function (params: CodeLensParams): CodeLens[]
 {
     if (!CanResolveModules())
         return null;
@@ -807,11 +829,12 @@ connection.onCodeLens(function (params : CodeLensParams) : CodeLens[]
     return scriptlenses.ComputeCodeLenses(asmodule);
 })
 
-connection.onCodeLensResolve(function (lens : CodeLens) : CodeLens{
+connection.onCodeLensResolve(function (lens: CodeLens): CodeLens
+{
     return lens;
 });
 
-connection.onExecuteCommand(function (params : ExecuteCommandParams)
+connection.onExecuteCommand(function (params: ExecuteCommandParams)
 {
     if (params.command == "angelscript.openAssets")
     {
@@ -854,7 +877,7 @@ connection.onExecuteCommand(function (params : ExecuteCommandParams)
     }
 });
 
-connection.onCodeAction(function (params : CodeActionParams) : Array<CodeAction>
+connection.onCodeAction(function (params: CodeActionParams): Array<CodeAction>
 {
     let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)
@@ -865,7 +888,7 @@ connection.onCodeAction(function (params : CodeActionParams) : Array<CodeAction>
     return scriptactions.GetCodeActions(asmodule, params.range, params.context.diagnostics);
 });
 
-connection.onCodeActionResolve(function (action : CodeAction) : CodeAction
+connection.onCodeActionResolve(function (action: CodeAction): CodeAction
 {
     let data = action.data as any;
     if (!data || !data.uri)
@@ -879,7 +902,7 @@ connection.onCodeActionResolve(function (action : CodeAction) : CodeAction
     return scriptactions.ResolveCodeAction(asmodule, action, data);
 });
 
-function ReplaceScriptAssetDefinition(assetName : string, assetContent : Array<string>)
+function ReplaceScriptAssetDefinition(assetName: string, assetContent: Array<string>)
 {
     // Find the literal asset
     let asset = scriptfiles.ScriptLiteralAssetsByName.get(assetName);
@@ -892,12 +915,12 @@ function ReplaceScriptAssetDefinition(assetName : string, assetContent : Array<s
     let newContent = "\n";
     for (let line of assetContent)
     {
-        newContent += indent+line;
+        newContent += indent + line;
         newContent += "\n";
     }
     newContent += outerIndent;
 
-    let edit = <WorkspaceEdit> {};
+    let edit = <WorkspaceEdit>{};
     edit.changes = {};
     edit.changes[asset.module.displayUri] = [
         TextEdit.replace(
@@ -909,7 +932,7 @@ function ReplaceScriptAssetDefinition(assetName : string, assetContent : Array<s
     connection.sendNotification("angelscript/wantSave", [asset.module.displayUri]);
 }
 
-function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | null
+function TryResolveSymbols(asmodule: scriptfiles.ASModule): SemanticTokens | null
 {
     if (CanResolveModules())
     {
@@ -926,27 +949,28 @@ function TryResolveSymbols(asmodule : scriptfiles.ASModule) : SemanticTokens | n
     }
 }
 
-function WaitForResolveSymbols(params : SemanticTokensParams) : SemanticTokens | Thenable<SemanticTokens>
+function WaitForResolveSymbols(params: SemanticTokensParams): SemanticTokens | Thenable<SemanticTokens>
 {
     let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
     let result = TryResolveSymbols(asmodule);
     if (result)
         return result;
 
-    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+    function timerFunc(resolve: any, reject: any, triesLeft: number)
+    {
         let result = TryResolveSymbols(asmodule);
         if (result)
             return resolve(result);
-        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+        setTimeout(function () { timerFunc(resolve, reject, triesLeft - 1); }, 100);
     }
-    let promise = new Promise<SemanticTokens>(function(resolve, reject)
+    let promise = new Promise<SemanticTokens>(function (resolve, reject)
     {
         timerFunc(resolve, reject, 50);
     });
     return promise;
 };
 
-connection.languages.semanticTokens.onDelta(function (params : SemanticTokensDeltaParams) : SemanticTokensDelta | Thenable<SemanticTokensDelta> | SemanticTokens | Thenable<SemanticTokens>
+connection.languages.semanticTokens.onDelta(function (params: SemanticTokensDeltaParams): SemanticTokensDelta | Thenable<SemanticTokensDelta> | SemanticTokens | Thenable<SemanticTokens>
 {
     if (!CanResolveModules())
         return WaitForResolveSymbols(params);
@@ -959,36 +983,38 @@ connection.languages.semanticTokens.onDelta(function (params : SemanticTokensDel
     return delta;
 });
 
-connection.languages.semanticTokens.on(function(params : SemanticTokensParams) : SemanticTokens | Thenable<SemanticTokens>
+connection.languages.semanticTokens.on(function (params: SemanticTokensParams): SemanticTokens | Thenable<SemanticTokens>
 {
     return WaitForResolveSymbols(params);
 });
 
-function getPathName(uri : string) : string
+function getPathName(uri: string): string
 {
     let pathname = decodeURIComponent(uri.replace("file://", "")).replace(/\//g, "\\");
-    if(pathname.startsWith("\\"))
+    if (pathname.startsWith("\\"))
         pathname = pathname.substr(1);
 
     return pathname;
 }
 
-function getFileUri(pathname : string) : string
+function getFileUri(pathname: string): string
 {
     let uri = pathname.replace(/\\/g, "/");
-    if(!uri.startsWith("/"))
+    if (!uri.startsWith("/"))
         uri = "/" + uri;
 
     return ("file://" + uri);
 }
 
-function getModuleName(uri : string) : string
+function getModuleName(uri: string): string
 {
     let modulename = decodeURIComponent(uri);
 
     // This assumes all relative paths are globally unique.
-    for (let rootUri of RootUris) {
-        if (modulename.startsWith(rootUri)) {
+    for (let rootUri of RootUris)
+    {
+        if (modulename.startsWith(rootUri))
+        {
             modulename = modulename.replace(rootUri, "");
             break;
         }
@@ -1002,8 +1028,9 @@ function getModuleName(uri : string) : string
     return modulename;
 }
 
-connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : string => {
-    let pos : TextDocumentPositionParams = params[0];
+connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]): string =>
+{
+    let pos: TextDocumentPositionParams = params[0];
     let asmodule = GetAndParseModule(pos.textDocument.uri);
     if (!asmodule)
         return null;
@@ -1048,55 +1075,68 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
     }
 });
 
-connection.onRequest("angelscript/getAPI", (root : string) : any => {
+connection.onRequest("angelscript/getAPI", (root: string): any =>
+{
     if (typedb.HasTypesFromUnreal())
         return api_docs.GetAPIList(root);
 
-    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+    function timerFunc(resolve: any, reject: any, triesLeft: number)
+    {
         if (typedb.HasTypesFromUnreal())
             return resolve(api_docs.GetAPIList(root));
-        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+        if (triesLeft <= 0)
+            return reject(new Error("Angelscript types have not been loaded; connect to the Unreal Editor first."));
+        setTimeout(function () { timerFunc(resolve, reject, triesLeft - 1); }, 100);
     }
-    let promise = new Promise<any>(function(resolve, reject)
+    let promise = new Promise<any>(function (resolve, reject)
     {
-        timerFunc(resolve, reject, 50);
+        timerFunc(resolve, reject, 5);
     });
     return promise;
 });
 
-connection.onRequest("angelscript/getAPISearch", (filter : string) : any => {
+connection.onRequest("angelscript/getAPISearch", (filter: string): any =>
+{
     if (typedb.HasTypesFromUnreal())
         return api_docs.GetAPISearch(filter);
 
-    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+    function timerFunc(resolve: any, reject: any, triesLeft: number)
+    {
         if (typedb.HasTypesFromUnreal())
             return resolve(api_docs.GetAPISearch(filter));
-        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+        if (triesLeft <= 0)
+            return reject(new Error("Angelscript types have not been loaded; connect to the Unreal Editor first."));
+        setTimeout(function () { timerFunc(resolve, reject, triesLeft - 1); }, 100);
     }
-    let promise = new Promise<any>(function(resolve, reject)
+    let promise = new Promise<any>(function (resolve, reject)
     {
-        timerFunc(resolve, reject, 50);
+        timerFunc(resolve, reject, 5);
     });
     return promise;
 });
 
-connection.onRequest("angelscript/getAPIDetails", (root : any) : any => {
+connection.onRequest("angelscript/getAPIDetails", (root: any): any =>
+{
     if (typedb.HasTypesFromUnreal())
         return api_docs.GetAPIDetails(root);
 
-    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+    function timerFunc(resolve: any, reject: any, triesLeft: number)
+    {
         if (typedb.HasTypesFromUnreal())
             return resolve(api_docs.GetAPIDetails(root));
-        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+        if (triesLeft <= 0)
+            return reject(new Error("Angelscript types have not been loaded; connect to the Unreal Editor first."));
+        setTimeout(function () { timerFunc(resolve, reject, triesLeft - 1); }, 100);
     }
-    let promise = new Promise<any>(function(resolve, reject)
+    let promise = new Promise<any>(function (resolve, reject)
     {
-        timerFunc(resolve, reject, 50);
+        timerFunc(resolve, reject, 5);
     });
     return promise;
 });
 
-connection.languages.inlineValue.on(function (params : InlineValueParams) : Array<InlineValue> {
+connection.languages.inlineValue.on(function (params: InlineValueParams): Array<InlineValue>
+{
     let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)
         return null;
@@ -1105,7 +1145,8 @@ connection.languages.inlineValue.on(function (params : InlineValueParams) : Arra
     return inlinevalues.ProvideInlineValues(asmodule, params.context.stoppedLocation.start);
 });
 
-connection.onDidChangeTextDocument((params) => {
+connection.onDidChangeTextDocument((params) =>
+{
     // The content of a text document did change in VSCode.
     // params.uri uniquely identifies the document.
     // params.contentChanges describe the content changes to the document.
@@ -1124,7 +1165,8 @@ connection.onDidChangeTextDocument((params) => {
     {
         // We don't parse because of didChange more than ten times per second,
         // so we don't end up with a giant backlog of parses.
-        asmodule.queuedParse = setTimeout(function() {
+        asmodule.queuedParse = setTimeout(function ()
+        {
             asmodule.queuedParse = null;
             scriptfiles.ParseModuleAndDependencies(asmodule);
             if (CanResolveModules() && ParseQueue.length == 0 && LoadQueue.length == 0)
@@ -1142,7 +1184,7 @@ connection.onDidChangeTextDocument((params) => {
         if (floatPromise)
         {
             floatPromise.then(
-                function (edit : WorkspaceEdit)
+                function (edit: WorkspaceEdit)
                 {
                     if (edit)
                         connection.workspace.applyEdit(edit);
@@ -1151,7 +1193,7 @@ connection.onDidChangeTextDocument((params) => {
     }
 });
 
-connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
+connection.onDidOpenTextDocument(function (params: DidOpenTextDocumentParams)
 {
     let uri = params.textDocument.uri;
     let modulename = getModuleName(uri);
@@ -1168,14 +1210,14 @@ connection.onDidOpenTextDocument(function (params : DidOpenTextDocumentParams)
     }
 });
 
-connection.onDidCloseTextDocument(function (params : DidCloseTextDocumentParams)
+connection.onDidCloseTextDocument(function (params: DidCloseTextDocumentParams)
 {
     let asmodule = scriptfiles.GetModuleByUri(params.textDocument.uri);
     if (asmodule)
         asmodule.isOpened = false;
 });
 
-connection.onDidChangeConfiguration(function (change : DidChangeConfigurationParams)
+connection.onDidChangeConfiguration(function (change: DidChangeConfigurationParams)
 {
     let settingsObject = change.settings as any;
     settings = settingsObject.UnrealAngelscript;
@@ -1239,7 +1281,7 @@ connection.onDidChangeConfiguration(function (change : DidChangeConfigurationPar
     projectCodeGenerationSettings.generators = settings.projectCodeGeneration.generators;
 });
 
-function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : Array<InlayHint> | null
+function TryResolveInlayHints(asmodule: scriptfiles.ASModule, range: Range): Array<InlayHint> | null
 {
     if (CanResolveModules())
     {
@@ -1256,33 +1298,34 @@ function TryResolveInlayHints(asmodule : scriptfiles.ASModule, range : Range) : 
     }
 }
 
-function WaitForInlayHints(uri : string, range : Range) : Array<InlayHint> | Thenable<Array<InlayHint>>
+function WaitForInlayHints(uri: string, range: Range): Array<InlayHint> | Thenable<Array<InlayHint>>
 {
     let asmodule = scriptfiles.GetModuleByUri(uri);
     let result = TryResolveInlayHints(asmodule, range);
     if (result)
         return result;
 
-    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+    function timerFunc(resolve: any, reject: any, triesLeft: number)
+    {
         let result = TryResolveInlayHints(asmodule, range);
         if (result)
             return resolve(result);
-        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+        setTimeout(function () { timerFunc(resolve, reject, triesLeft - 1); }, 100);
     }
-    let promise = new Promise<Array<InlayHint>>(function(resolve, reject)
+    let promise = new Promise<Array<InlayHint>>(function (resolve, reject)
     {
         timerFunc(resolve, reject, 50);
     });
     return promise;
 };
 
-connection.languages.inlayHint.on(function (params : InlayHintParams) : Array<InlayHint> | Thenable<Array<InlayHint>>
+connection.languages.inlayHint.on(function (params: InlayHintParams): Array<InlayHint> | Thenable<Array<InlayHint>>
 {
-    let uri : string = params.textDocument.uri;
+    let uri: string = params.textDocument.uri;
     return WaitForInlayHints(uri, params.range);
 });
 
-connection.onDocumentColor(function (params : DocumentColorParams) : ColorInformation[]
+connection.onDocumentColor(function (params: DocumentColorParams): ColorInformation[]
 {
     let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)
@@ -1293,7 +1336,7 @@ connection.onDocumentColor(function (params : DocumentColorParams) : ColorInform
     return colorpicker.ProvideDocumentColors(asmodule);
 });
 
-connection.onColorPresentation(function(params : ColorPresentationParams) : ColorPresentation[]
+connection.onColorPresentation(function (params: ColorPresentationParams): ColorPresentation[]
 {
     let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)
@@ -1304,7 +1347,7 @@ connection.onColorPresentation(function(params : ColorPresentationParams) : Colo
     return colorpicker.ProvideColorPresentations(asmodule, params.range, params.color);
 });
 
-connection.languages.typeHierarchy.onPrepare(function (params : TypeHierarchyPrepareParams) : TypeHierarchyItem[]
+connection.languages.typeHierarchy.onPrepare(function (params: TypeHierarchyPrepareParams): TypeHierarchyItem[]
 {
     let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)
@@ -1315,12 +1358,12 @@ connection.languages.typeHierarchy.onPrepare(function (params : TypeHierarchyPre
     return typehierarchy.PrepareTypeHierarchy(asmodule, params.position);
 });
 
-connection.languages.typeHierarchy.onSupertypes(function (params : TypeHierarchySupertypesParams) : TypeHierarchyItem[]
+connection.languages.typeHierarchy.onSupertypes(function (params: TypeHierarchySupertypesParams): TypeHierarchyItem[]
 {
     return typehierarchy.GetTypeHierarchySupertypes(params.item);
 });
 
-connection.languages.typeHierarchy.onSubtypes(function (params : TypeHierarchySubtypesParams) : TypeHierarchyItem[]
+connection.languages.typeHierarchy.onSubtypes(function (params: TypeHierarchySubtypesParams): TypeHierarchyItem[]
 {
     return typehierarchy.GetTypeHierarchySubtypes(params.item);
 });
