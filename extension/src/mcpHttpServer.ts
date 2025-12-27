@@ -37,6 +37,7 @@ const HEALTH_TIMEOUT_MS = 400;
 const POLL_INTERVAL_OK_MS = 3000;
 const POLL_INTERVAL_RETRY_MS = 1000;
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+const MAX_HEALTH_RESPONSE_BYTES = 64 * 1024;
 
 let serverState: McpHttpServerState | null = null;
 let pollingTimer: NodeJS.Timeout | null = null;
@@ -83,8 +84,26 @@ async function requestHealth(port: number): Promise<{ serverId?: string } | null
             },
             (res) => {
                 const chunks: Buffer[] = [];
-                res.on('data', (chunk) => chunks.push(chunk));
+                let responseBytes = 0;
+                let responseTooLarge = false;
+                res.on('data', (chunk) => {
+                    if (responseTooLarge) {
+                        return;
+                    }
+                    responseBytes += chunk.length;
+                    if (responseBytes > MAX_HEALTH_RESPONSE_BYTES) {
+                        responseTooLarge = true;
+                        res.destroy();
+                        resolve(null);
+                        return;
+                    }
+                    chunks.push(chunk);
+                });
                 res.on('end', () => {
+                    if (responseTooLarge) {
+                        resolve(null);
+                        return;
+                    }
                     if (res.statusCode !== 200) {
                         resolve(null);
                         return;

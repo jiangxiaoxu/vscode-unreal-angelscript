@@ -79,11 +79,13 @@ export async function buildSearchPayload(
     const allDetails: Array<{ index: number; details?: string }> = [];
     let nextIndex = 0;
     let activeCount = 0;
+    let cancelled = false;
     const totalItems = payload.items.length;
 
     await new Promise<void>((resolveAll) => {
         const startNext = () => {
             if (isCancelled()) {
+                cancelled = true;
                 if (activeCount === 0) {
                     resolveAll();
                 }
@@ -106,7 +108,7 @@ export async function buildSearchPayload(
                     })
                     .finally(() => {
                         activeCount -= 1;
-                        if (nextIndex >= totalItems && activeCount === 0) {
+                        if ((nextIndex >= totalItems || cancelled) && activeCount === 0) {
                             resolveAll();
                         } else {
                             startNext();
