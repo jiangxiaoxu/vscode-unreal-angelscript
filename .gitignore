@@ -2,4 +2,5 @@ node_modules
 *.vsix
 *.js
 *.js.map
+*.tsbuildinfo
 mcp-server/out
