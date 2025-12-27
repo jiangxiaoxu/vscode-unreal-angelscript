@@ -260,7 +260,7 @@ class McpServerState implements vscode.Disposable
         await new Promise<void>((resolve, reject) =>
         {
             const server = app.listen(port, '127.0.0.1', () => resolve());
-            server.on('error', (err) => reject(err));
+            server.once('error', (err) => reject(err));
             this.httpServer = server;
         });
 
@@ -281,8 +281,19 @@ class McpServerState implements vscode.Disposable
         type SearchArgs = { query: string; limit: number; includeDetails: boolean };
         type ToolExtra = { signal?: AbortSignal };
 
-        const registerTool = (mcpServer.registerTool as any).bind(mcpServer);
-        registerTool(
+        type ToolRegisteringMcpServer = {
+            registerTool: (
+                name: string,
+                definition: {
+                    description?: string;
+                    inputSchema?: z.ZodTypeAny;
+                },
+                handler: (rawArgs: unknown, extra: ToolExtra) => Promise<unknown> | unknown
+            ) => void;
+        };
+
+        const serverWithTools = mcpServer as unknown as ToolRegisteringMcpServer;
+        serverWithTools.registerTool(
             'Search_AngelScriptApi',
             {
                 description: 'Search the Angelscript API database for symbols and documentation.',
