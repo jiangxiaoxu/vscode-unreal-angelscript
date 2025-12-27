@@ -120,12 +120,17 @@ export class Message
 
 let pendingBuffer : Buffer = Buffer.alloc(0);
 
+function concatBuffers(buffers : Buffer[]) : Buffer
+{
+    return Buffer.concat(buffers as unknown as ReadonlyArray<Uint8Array>);
+}
+
 export function readMessages(buffer : Buffer) : Array<Message>
 {
     let list : Array<Message> = [];
     let offset = 0;
 
-    pendingBuffer = Buffer.concat([pendingBuffer, buffer])
+    pendingBuffer = concatBuffers([pendingBuffer, buffer])
 
     while (pendingBuffer.length >= 5)
     {
@@ -160,7 +165,7 @@ function writeString(str : string) : Buffer
 {
     let newBuffer = Buffer.alloc(4);
     newBuffer.writeInt32LE(str.length+1, 0);
-    return Buffer.concat([newBuffer, Buffer.from(str+"\0", "binary")]);
+    return concatBuffers([newBuffer, Buffer.from(str+"\0", "binary")]);
 }
 
 export function buildGoTo(typename : string, symbolname : string) : Buffer
@@ -168,7 +173,7 @@ export function buildGoTo(typename : string, symbolname : string) : Buffer
     let head = Buffer.alloc(5);
     head.writeUInt8(MessageType.GoToDefinition, 4);
 
-    let msg = Buffer.concat([
+    let msg = concatBuffers([
         head, writeString(typename), writeString(symbolname)
     ]);
 
@@ -194,7 +199,7 @@ export function buildOpenAssets(assets : Array<string>, className : string) : Bu
     for (let asset of assets)
         parts.push(writeString(asset));
     parts.push(writeString(className));
-    let msg = Buffer.concat(parts);
+    let msg = concatBuffers(parts);
     msg.writeUInt32LE(msg.length - 4, 0);
     return msg;
 }
@@ -205,7 +210,7 @@ export function buildCreateBlueprint(className : string) : Buffer
     head.writeUInt8(MessageType.CreateBlueprint, 4);
 
     let parts = [head, writeString(className)];
-    let msg = Buffer.concat(parts);
+    let msg = concatBuffers(parts);
     msg.writeUInt32LE(msg.length - 4, 0);
     return msg;
 }
