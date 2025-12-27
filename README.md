@@ -5,6 +5,40 @@ This branch specifically implements the runtime required to expose Language Mode
 - Exposes the Search_AngelScriptApi tool call so Copilot can query the API.
 - 提供了 Search_AngelScriptApi 工具调用以便copilot查询API.
 
+## MCP (HTTP) 支持 / MCP (HTTP) support
+为了让 Codex 通过 MCP 调用同样的 `angelscript_searchApi` 能力，本仓库增加了一个内置的
+Streamable HTTP MCP server，会复用 Angelscript language server 的 API 搜索逻辑。
+对外暴露工具名：`Search_AngelScriptApi`（输入/输出与现有 schema 一致，输出为 JSON 字符串）。
+
+默认行为：
+- 扩展启动后每 1 秒检查 `localhost:<端口>/health` 是否存在 MCP 服务（校验 `serverId`，超时 300–500ms）。
+- 若没有 MCP 服务，则尝试绑定端口并启动 MCP 服务。
+- 若端口被占用或已有 MCP 服务，扩展会静默等待并重试。
+- 若端口被其它服务占用（`/health` 无法连通且绑定失败多次），扩展会提示错误并停止重试。
+
+1. 编译插件：
+   ```bash
+   npm run compile
+   ```
+2. 在 VS Code 配置中启用并设置端口（可选，默认启用）：
+   ```json
+   {
+     "UnrealAngelscript.mcp.enabled": true,
+     "UnrealAngelscript.mcp.port": 0,
+     "UnrealAngelscript.mcp.maxStartupFailures": 5
+   }
+   ```
+   说明：`mcp.port = 0` 表示使用 `UnrealAngelscript.unrealConnectionPort + 100` 作为端口。
+3. 在 Codex 配置中添加 MCP server（HTTP）：
+   ```toml
+   [mcp_servers.angelscript]
+   url = "http://127.0.0.1:27199/mcp"
+   ```
+
+说明：
+- MCP server 会连接 Unreal Editor（默认端口 27099）来加载类型信息，确保 Unreal Editor 已运行。
+- 多个 VS Code 实例会共享同一端口，只有一个实例会启动 MCP 服务。
+
 Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://angelscript.hazelight.se
 
 ## Getting Started
