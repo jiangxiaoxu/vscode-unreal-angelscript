@@ -161,8 +161,6 @@ class McpServerState implements vscode.Disposable
             const res = await fetch(`http://127.0.0.1:${port}${HEALTH_PATH}`, {
                 signal: controller.signal,
             });
-            clearTimeout(timeout);
-
             if (!res.ok)
                 return 'other';
 
@@ -173,8 +171,11 @@ class McpServerState implements vscode.Disposable
         }
         catch
         {
-            clearTimeout(timeout);
             return 'absent';
+        }
+        finally
+        {
+            clearTimeout(timeout);
         }
     }
 
@@ -278,6 +279,7 @@ class McpServerState implements vscode.Disposable
                 .describe('Include documentation details for top matches.'),
         });
         type SearchArgs = { query: string; limit: number; includeDetails: boolean };
+        type ToolExtra = { signal?: AbortSignal };
 
         const registerTool = (mcpServer.registerTool as any).bind(mcpServer);
         registerTool(
@@ -286,7 +288,7 @@ class McpServerState implements vscode.Disposable
                 description: 'Search the Angelscript API database for symbols and documentation.',
                 inputSchema,
             },
-            async (rawArgs: unknown, extra: any) =>
+            async (rawArgs: unknown, extra: ToolExtra) =>
             {
                 const parsed = inputSchema.safeParse(rawArgs ?? {});
                 if (!parsed.success)
@@ -379,19 +381,34 @@ class McpServerState implements vscode.Disposable
         const allDetails: Array<{ index: number; details?: string }> = [];
         let nextIndex = 0;
         let active = 0;
+        let resolved = false;
+        let aborted = signal?.aborted ?? false;
+
+        const tryResolve = (resolve: () => void) =>
+        {
+            if (!resolved && (aborted || (nextIndex >= totalItems && active === 0)))
+            {
+                resolved = true;
+                resolve();
+            }
+        };
+
+        signal?.addEventListener('abort', () =>
+        {
+            aborted = true;
+        }, { once: true });
 
         await new Promise<void>((resolve) =>
         {
             const startNext = () =>
             {
-                if (signal?.aborted)
+                if (aborted)
                 {
-                    if (active === 0)
-                        resolve();
+                    tryResolve(resolve);
                     return;
                 }
 
-                while (nextIndex < totalItems && active < CONCURRENCY_LIMIT)
+                while (!aborted && nextIndex < totalItems && active < CONCURRENCY_LIMIT)
                 {
                     const currentIndex = nextIndex++;
                     const item = payload.items[currentIndex];
@@ -400,19 +417,20 @@ class McpServerState implements vscode.Disposable
                     this.client.sendRequest('angelscript/getAPIDetails', item.data)
                         .then((details: string) =>
                         {
-                            allDetails.push({ index: currentIndex, details });
+                            if (!aborted)
+                                allDetails.push({ index: currentIndex, details });
                         })
                         .catch((err) =>
                         {
                             console.error('Failed to fetch details for', item.label, err);
-                            allDetails.push({ index: currentIndex, details: undefined });
+                            if (!aborted)
+                                allDetails.push({ index: currentIndex, details: undefined });
                         })
                         .finally(() =>
                         {
                             active--;
-                            if (nextIndex >= totalItems && active === 0)
-                                resolve();
-                            else
+                            tryResolve(resolve);
+                            if (!resolved)
                                 startNext();
                         });
                 }

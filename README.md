@@ -3,7 +3,7 @@ This branch specifically implements the runtime required to expose Language Mode
 本分支实现的目标是让相关工具调用可以被 GitHub Copilot 使用。
 
 - Exposes the Search_AngelScriptApi tool call so Copilot can query the API.
-- 提供了 Search_AngelScriptApi 工具调用以便copilot查询API.
+- 提供了 Search_AngelScriptApi 工具调用以便Copilot查询API.
 
 ### MCP (Streamable HTTP)
 - 扩展激活后会在本机启动一个 MCP HTTP 服务（默认 `unrealConnectionPort + 100`，可通过 `UnrealAngelscript.mcp.port` 修改，启动失败重试次数可通过 `UnrealAngelscript.mcp.startupRetries` 配置，默认 5 次）。

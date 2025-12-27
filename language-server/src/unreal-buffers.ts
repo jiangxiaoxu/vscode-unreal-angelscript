@@ -130,7 +130,7 @@ export function readMessages(buffer : Buffer) : Array<Message>
     let list : Array<Message> = [];
     let offset = 0;
 
-    pendingBuffer = concatBuffers([pendingBuffer, buffer])
+    pendingBuffer = concatBuffers([pendingBuffer, buffer]);
 
     while (pendingBuffer.length >= 5)
     {
