@@ -728,7 +728,7 @@
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
-        "compile": "tsc -b",
+        "compile": "cd language-server && npx tsc && cd ../extension && npx tsc",
         "watch": "tsc -b -w",
         "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ../mcp-server && npm install && cd ..",
         "pegjs:compile": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum",
@@ -742,7 +742,7 @@
         "eslint": "^7.23.0",
         "mocha": "^11.7.1",
         "peggy": "^3.0.2",
-        "typescript": "^4.6.2",
+        "typescript": "^5.0.0",
         "vsce": "^2.15.0"
     }
 }

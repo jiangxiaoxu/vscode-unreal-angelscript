@@ -14,12 +14,16 @@ import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken 
 import { ASDebugSession } from './debug';
 import * as Net from 'net';
 import { ClientRequest } from 'http';
+import { AngelscriptMcpServer } from './mcp-server';
 
 const GetModuleForSymbolRequest = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
 const ProvideInlineValuesRequest = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
 const GetAPIRequest = new RequestType<any, any[], void>('angelscript/getAPI');
 const GetAPIDetailsRequest = new RequestType<any, string, void>('angelscript/getAPIDetails');
 const GetAPISearchRequest = new RequestType<any, any[], void>('angelscript/getAPISearch');
+
+// Global MCP server instance
+let mcpServer: AngelscriptMcpServer | null = null;
 
 export function activate(context: ExtensionContext)
 {
@@ -204,6 +208,38 @@ export function activate(context: ExtensionContext)
         );
         context.subscriptions.push(toolDisposable);
     }
+
+    // Start MCP server (integrated with extension, sharing LanguageClient)
+    // The MCP server can be used by Codex via STDIO transport
+    mcpServer = new AngelscriptMcpServer(client, startedClient);
+    
+    // Register command to manually start MCP server if needed
+    const startMcpServerCommand = vscode.commands.registerCommand('angelscript.startMcpServer', async () => {
+        if (mcpServer) {
+            try {
+                await mcpServer.start();
+                vscode.window.showInformationMessage('Angelscript MCP Server started');
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to start MCP Server: ${error}`);
+            }
+        }
+    });
+    context.subscriptions.push(startMcpServerCommand);
+
+    // Register command to stop MCP server
+    const stopMcpServerCommand = vscode.commands.registerCommand('angelscript.stopMcpServer', async () => {
+        if (mcpServer) {
+            try {
+                await mcpServer.stop();
+                vscode.window.showInformationMessage('Angelscript MCP Server stopped');
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to stop MCP Server: ${error}`);
+            }
+        }
+    });
+    context.subscriptions.push(stopMcpServerCommand);
+
+    console.log("MCP Server integration ready (use 'angelscript.startMcpServer' command to start)");
 }
 
 type AngelscriptSearchParams = {

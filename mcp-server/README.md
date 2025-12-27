@@ -2,16 +2,36 @@
 
 An MCP (Model Context Protocol) server that exposes the Angelscript API search functionality, enabling Codex and other MCP-compatible clients to search the Angelscript API database.
 
+## Architecture
+
+The MCP server is now **integrated into the VS Code extension** and shares the LanguageClient with the extension. This means:
+
+1. The MCP server is started by the VS Code extension when activated
+2. It reuses the same LanguageClient connection to the language server
+3. The type database is shared with the extension
+
 ## Features
 
 - **angelscript_searchApi**: Search the Angelscript API database for symbols and documentation
 
-## Installation
+## Usage
+
+### Method 1: Extension-Integrated (Recommended)
+
+The MCP server is automatically available when the VS Code extension is activated. Use VS Code commands to control it:
+
+- `angelscript.startMcpServer` - Start the MCP server
+- `angelscript.stopMcpServer` - Stop the MCP server
+
+### Method 2: Standalone Mode (Legacy)
+
+For standalone usage without VS Code, you can still run the standalone server:
 
 ```bash
 cd mcp-server
 npm install
 npm run build
+node out/index.js
 ```
 
 ## Usage with Codex
@@ -72,11 +92,8 @@ Returns a JSON object with:
 ## Requirements
 
 - Node.js >= 18.0.0
-- The Angelscript type database must be loaded (requires connection to Unreal Engine or cached type data)
-
-## Note
-
-This MCP server shares the type database with the VS Code Angelscript extension's language server. Without the type database loaded, the tool will return an error message indicating that types are unavailable.
+- VS Code with the Unreal Angelscript extension installed (for extension-integrated mode)
+- The language server must be running and connected to Unreal Engine
 
 ## License
 
