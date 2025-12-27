@@ -7,19 +7,16 @@
 import * as path from 'path';
 
 import { workspace, ExtensionContext, TextDocument, Range, InlayHint } from 'vscode';
-import { LanguageClient, LanguageClientOptions, ServerOptions, Definition, TransportKind, Diagnostic, RequestType, ExecuteCommandRequest, ExecuteCommandParams, ExecuteCommandRegistrationOptions, TextDocumentPositionParams, ImplementationRequest, TypeDefinitionRequest, TextDocumentItem } from 'vscode-languageclient/node';
+import { LanguageClient, LanguageClientOptions, ServerOptions, Definition, TransportKind, Diagnostic, ExecuteCommandRequest, ExecuteCommandParams, ExecuteCommandRegistrationOptions, ImplementationRequest, TypeDefinitionRequest, TextDocumentItem } from 'vscode-languageclient/node';
 
 import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
 import { ASDebugSession } from './debug';
 import * as Net from 'net';
 import { ClientRequest } from 'http';
-
-const GetModuleForSymbolRequest = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
-const ProvideInlineValuesRequest = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
-const GetAPIRequest = new RequestType<any, any[], void>('angelscript/getAPI');
-const GetAPIDetailsRequest = new RequestType<any, string, void>('angelscript/getAPIDetails');
-const GetAPISearchRequest = new RequestType<any, any[], void>('angelscript/getAPISearch');
+import { buildSearchPayload, AngelscriptSearchParams } from './angelscriptApiSearch';
+import { GetAPIRequest, GetAPIDetailsRequest, GetAPISearchRequest, GetModuleForSymbolRequest, ProvideInlineValuesRequest } from './apiRequests';
+import { startMcpHttpServerManager } from './mcpHttpServer';
 
 export function activate(context: ExtensionContext)
 {
@@ -204,13 +201,9 @@ export function activate(context: ExtensionContext)
         );
         context.subscriptions.push(toolDisposable);
     }
-}
 
-type AngelscriptSearchParams = {
-    query: string;
-    limit?: number;
-    includeDetails?: boolean;
-};
+    startMcpHttpServerManager(context, client, startedClient);
+}
 
 class AngelscriptSearchApiTool implements vscode.LanguageModelTool<AngelscriptSearchParams>
 {
@@ -239,111 +232,21 @@ class AngelscriptSearchApiTool implements vscode.LanguageModelTool<AngelscriptSe
         try
         {
             await this.startedClient;
-            const limit = typeof options?.input?.limit === "number"
-                ? Math.min(Math.max(Math.floor(options.input.limit), 1), 1000)
-                : 500;
-            const includeDetails = options?.input?.includeDetails !== false;
-            const results = await this.client.sendRequest(GetAPISearchRequest, query);
-            if (!results || results.length === 0)
+            const payload = await buildSearchPayload(
+                this.client,
+                {
+                    query,
+                    limit: options?.input?.limit,
+                    includeDetails: options?.input?.includeDetails
+                },
+                () => token.isCancellationRequested
+            );
+
+            if (payload.items.length === 0)
             {
                 return new vscode.LanguageModelToolResult([
                     new vscode.LanguageModelTextPart(`No Angelscript API results for "${query}".`)
                 ]);
-            }
-
-            const items = results.slice(0, limit);
-            const payload: {
-                query: string;
-                total: number;
-                returned: number;
-                truncated: boolean;
-                items: Array<{ label: string; type?: string; data?: unknown; details?: string }>;
-            } = {
-                query,
-                total: results.length,
-                returned: items.length,
-                truncated: results.length > items.length,
-                items: items.map((item: any) => ({
-                    label: item.label,
-                    type: item.type ?? undefined,
-                    data: item.data ?? undefined
-                }))
-            };
-
-            if (includeDetails)
-            {
-                if (token.isCancellationRequested)
-                {
-                    return new vscode.LanguageModelToolResult([
-                        new vscode.LanguageModelTextPart(JSON.stringify(payload, null, 2))
-                    ]);
-                }
-
-                // Concurrent pool: maintain max 10 active requests at all times
-                // When one completes, immediately start the next one
-                const CONCURRENCY_LIMIT = 10;
-                const allDetails: Array<{ index: number; details?: string }> = [];
-                let nextIndex = 0;
-                let activeCount = 0;
-                const totalItems = payload.items.length;
-
-                if (totalItems > 0)
-                {
-                    await new Promise<void>((resolveAll) =>
-                    {
-                        const startNext = () =>
-                        {
-                            // Don't start new requests if cancelled
-                            if (token.isCancellationRequested)
-                            {
-                                if (activeCount === 0)
-                                    resolveAll();
-                                return;
-                            }
-
-                            // Fill up to CONCURRENCY_LIMIT active requests
-                            while (nextIndex < totalItems && activeCount < CONCURRENCY_LIMIT)
-                            {
-                                const currentIndex = nextIndex;
-                                const item = payload.items[currentIndex];
-                                const itemData = item.data;
-                                nextIndex++;
-                                activeCount++;
-
-                                this.client.sendRequest(GetAPIDetailsRequest, itemData)
-                                    .then((details: string) =>
-                                    {
-                                        allDetails.push({ index: currentIndex, details });
-                                    })
-                                    .catch((error: any) =>
-                                    {
-                                        console.error(`Failed to fetch details for ${item.label}:`, error);
-                                        allDetails.push({ index: currentIndex, details: undefined });
-                                    })
-                                    .finally(() =>
-                                    {
-                                        activeCount--;
-                                        if (nextIndex >= totalItems && activeCount === 0)
-                                        {
-                                            resolveAll();
-                                        }
-                                        else
-                                        {
-                                            startNext();
-                                        }
-                                    });
-                            }
-                        };
-
-                        startNext();
-                    });
-                }
-
-                // Map details back to items by index
-                for (const detail of allDetails)
-                {
-                    payload.items[detail.index].details = detail.details;
-                }
             }
 
             return new vscode.LanguageModelToolResult([
