@@ -14,6 +14,7 @@ import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken 
 import { ASDebugSession } from './debug';
 import * as Net from 'net';
 import { ClientRequest } from 'http';
+import { startMcpServer } from './mcpServer';
 
 const GetModuleForSymbolRequest = new RequestType<TextDocumentPositionParams, string, void>('angelscript/getModuleForSymbol');
 const ProvideInlineValuesRequest = new RequestType<TextDocumentPositionParams, any[], void>('angelscript/provideInlineValues');
@@ -204,6 +205,9 @@ export function activate(context: ExtensionContext)
         );
         context.subscriptions.push(toolDisposable);
     }
+
+    // Start MCP HTTP server (Streamable) if available.
+    startMcpServer(context, client, startedClient);
 }
 
 type AngelscriptSearchParams = {

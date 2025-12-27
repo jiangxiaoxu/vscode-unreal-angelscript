@@ -481,6 +481,16 @@
                         }
                     }
                 },
+                "UnrealAngelscript.mcp.port": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Port for the Angelscript MCP HTTP server. If 0 or unset, defaults to unrealConnectionPort + 100."
+                },
+                "UnrealAngelscript.mcp.startupRetries": {
+                    "type": "number",
+                    "default": 5,
+                    "description": "How many consecutive start failures before giving up and showing an error."
+                },
                 "UnrealAngelscript.completion.dependencyRestrictions": {
                     "type": "array",
                     "default": [],
@@ -720,6 +730,8 @@
         "@types/glob": "^7.1.3",
         "glob": "^7.1.3",
         "iconv-lite": "^0.6.2",
+        "@modelcontextprotocol/sdk": "^1.25.1",
+        "zod": "^3.25.3",
         "moo": "^0.5.1",
         "npm": "^11.5.2",
         "vscode-languageclient": "^8.1.0",
@@ -736,13 +748,13 @@
     },
     "devDependencies": {
         "@types/mocha": "^8.2.2",
-        "@types/node": "^12.12.0",
+        "@types/node": "^20.14.11",
         "@typescript-eslint/eslint-plugin": "^4.21.0",
         "@typescript-eslint/parser": "^4.21.0",
         "eslint": "^7.23.0",
         "mocha": "^11.7.1",
         "peggy": "^3.0.2",
-        "typescript": "^4.6.2",
+        "typescript": "^5.5.4",
         "vsce": "^2.15.0"
     }
 }
