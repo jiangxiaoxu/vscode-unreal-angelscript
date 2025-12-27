@@ -40,7 +40,7 @@
                     "api",
                     "search"
                 ],
-                "toolReferenceName": "asSearch",
+                "toolReferenceName": "Search_AngelScriptApi",
                 "displayName": "Angelscript API Search",
                 "modelDescription": "Search the Angelscript API database for symbols and documentation. Provide a query string and optionally limit the results or include documentation details.",
                 "canBeReferencedInPrompt": true,
