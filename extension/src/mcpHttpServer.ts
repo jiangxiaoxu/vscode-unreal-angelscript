@@ -3,28 +3,23 @@ import { URL } from 'url';
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+// eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
+const { ResourceTemplate } = require('@modelcontextprotocol/sdk/server/mcp.js');
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import * as z from 'zod';
-import { buildSearchPayload } from './angelscriptApiSearch';
+import {
+    ApiResponsePayload,
+    ApiResultItem,
+    buildSearchPayload
+} from './angelscriptApiSearch';
+import { GetAPIDetailsRequest } from './apiRequests';
 
 type McpTransport = {
     handleRequest: (req: http.IncomingMessage, res: http.ServerResponse, body: unknown) => Promise<void>;
     close: () => Promise<void>;
 };
 
-type McpServerLike = {
-    registerTool: (
-        name: string,
-        tool: {
-            description: string;
-            inputSchema: unknown;
-        },
-        handler: (args: unknown, extra: { signal: { aborted: boolean } }) => Promise<{
-            content: Array<{ type: 'text'; text: string }>;
-        }>
-    ) => void;
-    connect: (transport: McpTransport) => Promise<void>;
-};
+type McpServerLike = InstanceType<typeof McpServer>;
 
 type McpHttpServerState = {
     httpServer: http.Server;
@@ -33,11 +28,97 @@ type McpHttpServerState = {
 };
 
 const SERVER_ID = 'angelscript-api-mcp';
+const RESOURCE_BASE = 'mcp://angelscript-api/';
+const SEARCH_RESOURCE_TEMPLATE = `${RESOURCE_BASE}search{?query,limit,includeDetails}`;
+const SYMBOL_RESOURCE_TEMPLATE = `${RESOURCE_BASE}symbol/{id}`;
 const HEALTH_TIMEOUT_MS = 400;
 const POLL_INTERVAL_OK_MS = 3000;
 const POLL_INTERVAL_RETRY_MS = 1000;
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 const MAX_HEALTH_RESPONSE_BYTES = 64 * 1024;
+type TemplateVariables = Record<string, string | string[] | undefined>;
+
+function getSingleVariable(variables: TemplateVariables, key: string): string | undefined {
+    const raw = variables[key];
+    if (Array.isArray(raw)) {
+        return raw[0];
+    }
+    if (typeof raw === 'string') {
+        return raw;
+    }
+    return undefined;
+}
+
+function decodeURIComponentSafe(value: string | undefined): string | undefined {
+    if (typeof value !== 'string') {
+        return value;
+    }
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
+function parseLimit(raw: string | undefined): number | undefined {
+    if (!raw) {
+        return undefined;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+        return undefined;
+    }
+    return parsed;
+}
+
+function parseIncludeDetails(raw: string | undefined): boolean | undefined {
+    if (raw === undefined) {
+        return undefined;
+    }
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') {
+        return true;
+    }
+    if (normalized === 'false' || normalized === '0') {
+        return false;
+    }
+    return undefined;
+}
+
+function encodeSymbolId(data: unknown): string | undefined {
+    try {
+        const json = JSON.stringify(data ?? null);
+        return encodeURIComponent(json);
+    } catch {
+        return undefined;
+    }
+}
+
+function decodeSymbolId(raw: string): unknown {
+    try {
+        return JSON.parse(decodeURIComponent(raw));
+    } catch {
+        return raw;
+    }
+}
+
+function formatSymbolUri(data: unknown): string | undefined {
+    const encoded = encodeSymbolId(data);
+    if (!encoded) {
+        return undefined;
+    }
+    return SYMBOL_RESOURCE_TEMPLATE.replace('{id}', encoded);
+}
+
+function attachResourceUris(payload: ApiResponsePayload): ApiResponsePayload & { items: Array<ApiResultItem & { resourceUri?: string }> } {
+    return {
+        ...payload,
+        items: payload.items.map((item) => ({
+            ...item,
+            resourceUri: formatSymbolUri(item.data)
+        }))
+    };
+}
 
 let serverState: McpHttpServerState | null = null;
 let pollingTimer: NodeJS.Timeout | null = null;
@@ -177,8 +258,9 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                     },
                     () => extra.signal.aborted
                 );
+                const payloadWithUris = attachResourceUris(payload);
 
-                if (payload.items.length === 0) {
+                if (payloadWithUris.items.length === 0) {
                     return {
                         content: [
                             {
@@ -193,7 +275,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                     content: [
                         {
                             type: 'text',
-                            text: JSON.stringify(payload, null, 2)
+                            text: JSON.stringify(payloadWithUris, null, 2)
                         }
                     ]
                 };
@@ -203,6 +285,129 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                         {
                             type: 'text',
                             text: 'The Angelscript API tool failed to run. Please ensure the language server is running and try again.'
+                        }
+                    ]
+                };
+            }
+        }
+    );
+
+    server.registerResource(
+        'AngelscriptApiSearch',
+        new ResourceTemplate(SEARCH_RESOURCE_TEMPLATE, {}),
+        {
+            name: 'Angelscript API Search',
+            description: 'Search the Angelscript API database via resource template (same as Search_AngelScriptApi tool).',
+            mimeType: 'application/json'
+        },
+        async (_uri, variables, extra) => {
+            const query = decodeURIComponentSafe(getSingleVariable(variables, 'query'))?.trim() ?? '';
+            const limit = parseLimit(getSingleVariable(variables, 'limit'));
+            const includeDetails = parseIncludeDetails(getSingleVariable(variables, 'includeDetails'));
+
+            if (!query) {
+                const emptyPayload: ApiResponsePayload = {
+                    query,
+                    total: 0,
+                    returned: 0,
+                    truncated: false,
+                    items: []
+                };
+                return {
+                    contents: [
+                        {
+                            uri: _uri.toString(),
+                            mimeType: 'application/json',
+                            text: JSON.stringify(emptyPayload, null, 2)
+                        }
+                    ]
+                };
+            }
+
+            try {
+                await startedClient;
+                const payload = await buildSearchPayload(
+                    client,
+                    {
+                        query,
+                        limit,
+                        includeDetails
+                    },
+                    () => extra.signal?.aborted ?? false
+                );
+                const payloadWithUris = attachResourceUris(payload);
+
+                return {
+                    contents: [
+                        {
+                            uri: _uri.toString(),
+                            mimeType: 'application/json',
+                            text: JSON.stringify(payloadWithUris, null, 2)
+                        }
+                    ]
+                };
+            } catch {
+                return {
+                    contents: [
+                        {
+                            uri: _uri.toString(),
+                            mimeType: 'text/plain',
+                            text: 'Failed to read Angelscript API search resource.'
+                        }
+                    ]
+                };
+            }
+        }
+    );
+
+    server.registerResource(
+        'AngelscriptApiSymbolDetails',
+        new ResourceTemplate(SYMBOL_RESOURCE_TEMPLATE, {}),
+        {
+            name: 'Angelscript API Symbol Detail',
+            description: 'Fetch Angelscript API symbol documentation using the encoded symbol id from search results.',
+            mimeType: 'text/markdown'
+        },
+        async (uri, variables, extra) => {
+            const rawId = getSingleVariable(variables, 'id');
+            if (!rawId) {
+                return {
+                    contents: [
+                        {
+                            uri: uri.toString(),
+                            mimeType: 'text/plain',
+                            text: 'No symbol id provided.'
+                        }
+                    ]
+                };
+            }
+
+            const decodedId = decodeSymbolId(rawId);
+
+            try {
+                await startedClient;
+                const details = await client.sendRequest(GetAPIDetailsRequest, decodedId);
+                const text =
+                    typeof details === 'string' && details.trim().length > 0
+                        ? details
+                        : 'No details available for this symbol.';
+
+                return {
+                    contents: [
+                        {
+                            uri: uri.toString(),
+                            mimeType: 'text/markdown',
+                            text
+                        }
+                    ]
+                };
+            } catch {
+                return {
+                    contents: [
+                        {
+                            uri: uri.toString(),
+                            mimeType: 'text/plain',
+                            text: 'Failed to fetch Angelscript API symbol details.'
                         }
                     ]
                 };
