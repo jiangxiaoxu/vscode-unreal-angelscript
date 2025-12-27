@@ -287,8 +287,14 @@ async function tryStartHttpServer(client: LanguageClient, startedClient: Promise
         });
 
         httpServer.listen(port, '127.0.0.1', () => {
-            serverState = { httpServer, transport, mcpServer };
-            resolve(true);
+            try {
+                serverState = { httpServer, transport, mcpServer };
+                resolve(true);
+            } catch {
+                httpServer.close();
+                transport.close().catch(() => undefined);
+                resolve(false);
+            }
         });
     });
 }
