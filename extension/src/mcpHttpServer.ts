@@ -4,13 +4,32 @@ import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import * as z from 'zod/v3';
+import * as z from 'zod';
 import { buildSearchPayload } from './angelscriptApiSearch';
+
+type McpTransport = {
+    handleRequest: (req: http.IncomingMessage, res: http.ServerResponse, body: unknown) => Promise<void>;
+    close: () => Promise<void>;
+};
+
+type McpServerLike = {
+    registerTool: (
+        name: string,
+        tool: {
+            description: string;
+            inputSchema: unknown;
+        },
+        handler: (args: unknown, extra: { signal: { aborted: boolean } }) => Promise<{
+            content: Array<{ type: 'text'; text: string }>;
+        }>
+    ) => void;
+    connect: (transport: McpTransport) => Promise<void>;
+};
 
 type McpHttpServerState = {
     httpServer: http.Server;
-    transport: any;
-    mcpServer: any;
+    transport: McpTransport;
+    mcpServer: McpServerLike;
 };
 
 const SERVER_ID = 'angelscript-api-mcp';
@@ -99,7 +118,7 @@ async function checkMcpServer(port: number): Promise<HealthStatus> {
     return 'mismatch';
 }
 
-function createMcpServer(client: LanguageClient, startedClient: Promise<void>): any {
+function createMcpServer(client: LanguageClient, startedClient: Promise<void>): McpServerLike {
     const server = new McpServer({
         name: SERVER_ID,
         version: '1.0.0'
