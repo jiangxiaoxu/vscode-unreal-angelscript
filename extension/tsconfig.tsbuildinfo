@@ -1,0 +1,1 @@
+{"root":["./src/angelscriptApiSearch.ts","./src/apiRequests.ts","./src/debug.ts","./src/debugAdapter.ts","./src/extension.ts","./src/mcp-shim.d.ts","./src/mcpHttpServer.ts","./src/unreal-debugclient.ts","./src/zod-shim.d.ts"],"errors":true,"version":"5.9.3"}
