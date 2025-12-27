@@ -3,10 +3,9 @@ import { URL } from 'url';
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-// @modelcontextprotocol/sdk does not currently expose ResourceTemplate via the typed server import path,
-// so we require the CJS build and type it loosely.
+// ResourceTemplate is available at runtime but not exported in the typed server entry, so require the CJS build.
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-unsafe-assignment
-const { ResourceTemplate }: { ResourceTemplate: new (...args: any[]) => any } = require('@modelcontextprotocol/sdk/dist/cjs/server/mcp.js');
+const { ResourceTemplate }: { ResourceTemplate: new (...args: any[]) => any } = require('@modelcontextprotocol/sdk/server/mcp.js');
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import * as z from 'zod';
 import {
@@ -67,7 +66,7 @@ function parseLimit(raw: string | undefined): number | undefined {
         return undefined;
     }
     const parsed = Number(raw);
-    if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+    if (!Number.isFinite(parsed) || parsed < 1 || !Number.isInteger(parsed)) {
         return undefined;
     }
     return parsed;
@@ -308,11 +307,13 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
         async (uri, variables, extra) => {
             const query = decodeURIComponentSafe(getSingleVariable(variables, 'query'))?.trim() ?? '';
             const limit = parseLimit(getSingleVariable(variables, 'limit'));
-            const includeDetails = parseIncludeDetails(getSingleVariable(variables, 'includeDetails'));
+            const includeDetailsParam = parseIncludeDetails(getSingleVariable(variables, 'includeDetails'));
+            // Default to true when unspecified to match buildSearchPayload behavior (includeDetails !== false).
+            const includeDetails = includeDetailsParam ?? true;
 
-                if (!query) {
-                    const emptyPayload: ApiResponsePayload = {
-                        query,
+            if (!query) {
+                const emptyPayload: ApiResponsePayload = {
+                    query,
                     total: 0,
                     returned: 0,
                     truncated: false,
@@ -357,7 +358,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                         {
                             uri: uri.toString(),
                             mimeType: 'text/plain',
-                            text: 'Failed to read Angelscript API search resource.'
+                            text: 'Failed to read AngelScript API search resource.'
                         }
                     ]
                 };
@@ -412,7 +413,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                         {
                             uri: uri.toString(),
                             mimeType: 'text/plain',
-                            text: 'Failed to fetch Angelscript API symbol details.'
+                            text: 'Failed to fetch AngelScript API symbol details.'
                         }
                     ]
                 };
