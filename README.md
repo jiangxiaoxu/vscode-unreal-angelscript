@@ -2,8 +2,8 @@
 This branch specifically implements the runtime required to expose Language Model Tool calls for Copilot’s use.
 本分支实现的目标是让相关工具调用可以被 GitHub Copilot 使用。
 
-- Exposes the angelscript_searchApi tool call so Copilot can query the API.
-- 提供了 angelscript_searchApi 工具调用以便copilot查询API.
+- Exposes the Search_AngelScriptApi tool call so Copilot can query the API.
+- 提供了 Search_AngelScriptApi 工具调用以便copilot查询API.
 
 Language Server and Debug Adapter for use with the UnrealEngine-Angelscript plugin from https://angelscript.hazelight.se
 
