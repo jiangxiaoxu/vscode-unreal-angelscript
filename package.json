@@ -40,7 +40,7 @@
                     "api",
                     "search"
                 ],
-                "toolReferenceName": "Search_AngelScriptApi",
+                "toolReferenceName": "angelscript_searchApi",
                 "displayName": "Angelscript API Search",
                 "modelDescription": "Search the Angelscript API database for symbols and documentation. The limit parameter defaults to 1000 and must not be below 1000. The includeDetails parameter defaults to true and should not be passed unless you specifically need to exclude documentation. Do NOT pass limit or includeDetails unless you need specific values. Omit both parameters to use defaults.",
                 "canBeReferencedInPrompt": true,

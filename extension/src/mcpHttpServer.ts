@@ -275,7 +275,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
     });
 
     server.registerTool(
-        'Search_AngelScriptApi',
+        'angelscript_searchApi',
         {
             description: 'Search the Angelscript API database for symbols and documentation. The limit parameter defaults to 1000 and must not be below 1000. The includeDetails parameter defaults to true and should not be passed unless you specifically need to exclude documentation. Do NOT pass limit or includeDetails unless you need specific values. Omit both parameters to use defaults.',
             inputSchema: {
@@ -348,11 +348,11 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
     );
 
     server.registerResource(
-        'AngelscriptApiSearch',
+        'angelscript_searchApi',
         new ResourceTemplate(SEARCH_RESOURCE_TEMPLATE, {}),
         {
             name: 'Angelscript API Search',
-            description: 'Search the Angelscript API database via resource template (same as Search_AngelScriptApi tool).',
+            description: 'Search the Angelscript API database via resource template (same as angelscript_searchApi tool).',
             mimeType: 'application/json'
         },
         async (uri, variables, extra) =>
@@ -422,7 +422,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
     );
 
     server.registerResource(
-        'AngelscriptApiSymbolDetails',
+        'angelscript_symbolDetails',
         new ResourceTemplate(SYMBOL_RESOURCE_TEMPLATE, {}),
         {
             name: 'Angelscript API Symbol Detail',

@@ -2,13 +2,13 @@
 This branch specifically implements the runtime required to expose Language Model Tool calls for Copilot’s use.
 本分支实现的目标是让相关工具调用可以被 GitHub Copilot 使用。
 
-- Exposes the Search_AngelScriptApi tool call so Copilot can query the API.
-- 提供了 Search_AngelScriptApi 工具调用以便copilot查询API.
+- Exposes the angelscript_searchApi tool call so Copilot can query the API.
+- 提供了 angelscript_searchApi 工具调用以便 Copilot 查询 API。
 
 ## MCP (HTTP) 支持 / MCP (HTTP) support
 为了让 Codex 通过 MCP 调用同样的 `angelscript_searchApi` 能力，本仓库增加了一个内置的
 Streamable HTTP MCP server，会复用 Angelscript language server 的 API 搜索逻辑。
-对外暴露工具名：`Search_AngelScriptApi`（输入/输出与现有 schema 一致，输出为 JSON 字符串）。
+对外暴露工具名：`angelscript_searchApi`（输入/输出与现有 schema 一致，输出为 JSON 字符串）。
 
 默认行为：
 - 扩展启动后每 1 秒检查 `localhost:<端口>/health` 是否存在 MCP 服务（校验 `serverId`，超时 300–500ms）。
