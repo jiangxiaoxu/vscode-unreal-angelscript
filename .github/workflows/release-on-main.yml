@@ -28,6 +28,13 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Get commit date tag
+        id: commit
+        run: |
+          COMMIT_TS=$(git log -1 --format=%ct)
+          COMMIT_DATE=$(date -u -d "@$COMMIT_TS" +%Y-%m-%d)
+          echo "commit_date=$COMMIT_DATE" >> "$GITHUB_OUTPUT"
+
       - name: Package VSIX
         run: |
           mkdir -p dist
@@ -38,3 +45,17 @@ jobs:
         with:
           name: unreal-angelscript-vsix
           path: dist/*.vsix
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.meta.outputs.version }}-${{ steps.commit.outputs.commit_date }}
+          name: Unreal Angelscript v${{ steps.meta.outputs.version }} (${{ steps.commit.outputs.commit_date }})
+          body: |
+            Automated release from manual trigger.
+            Version: v${{ steps.meta.outputs.version }}
+            Commit date: ${{ steps.commit.outputs.commit_date }}
+          files: dist/*.vsix
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
