@@ -3,7 +3,7 @@
     "displayName": "Unreal Angelscript",
     "description": "Implements support for unreal-bound angelscript files.",
     "version": "0.0.1",
-    "publisher": "Hazelight",
+    "publisher": "jiangxiaoxu",
     "engines": {
         "vscode": "^1.100.0"
     },
