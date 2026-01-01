@@ -60,7 +60,7 @@ jobs:
       - name: Package VSIX
         run: |
           mkdir -p dist
-          npx -y @vscode/vsce package --out "./dist/unreal-angelscript-${{ steps.meta.outputs.version }}.vsix"
+          npx -y @vscode/vsce package --out "./dist/unreal-angelscript-${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }}.vsix"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
