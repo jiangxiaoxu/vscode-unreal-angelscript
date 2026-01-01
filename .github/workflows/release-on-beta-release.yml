@@ -1,7 +1,11 @@
-name: Release on main
+name: Release on beta and release
 
 on:
-  workflow_dispatch
+  workflow_dispatch:
+  push:
+    branches:
+      - beta
+      - release
 
 permissions:
   contents: write
@@ -35,6 +39,24 @@ jobs:
           COMMIT_DATE=$(date -u -d "@$COMMIT_TS" +%Y-%m-%d)
           echo "commit_date=$COMMIT_DATE" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release channel
+        id: channel
+        run: |
+          REF_NAME="${GITHUB_REF_NAME}"
+          TAG_SUFFIX=""
+          PRERELEASE=false
+          MAKE_LATEST=true
+          if [ "$REF_NAME" = "beta" ]; then
+            TAG_SUFFIX="-beta"
+            PRERELEASE=true
+            MAKE_LATEST=false
+          elif [ "$REF_NAME" = "release" ]; then
+            TAG_SUFFIX="-release"
+          fi
+          echo "tag_suffix=$TAG_SUFFIX" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "make_latest=$MAKE_LATEST" >> "$GITHUB_OUTPUT"
+
       - name: Package VSIX
         run: |
           mkdir -p dist
@@ -49,13 +71,15 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.meta.outputs.version }}-${{ steps.commit.outputs.commit_date }}
-          name: Unreal Angelscript v${{ steps.meta.outputs.version }} (${{ steps.commit.outputs.commit_date }})
+          tag_name: v${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }}-${{ steps.commit.outputs.commit_date }}
+          name: Unreal Angelscript v${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }} (${{ steps.commit.outputs.commit_date }})
           body: |
-            Automated release from manual trigger.
+            Automated release.
             Version: v${{ steps.meta.outputs.version }}
             Commit date: ${{ steps.commit.outputs.commit_date }}
+            Branch: ${{ github.ref_name }}
           files: dist/*.vsix
-          make_latest: true
+          prerelease: ${{ steps.channel.outputs.prerelease }}
+          make_latest: ${{ steps.channel.outputs.make_latest }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
