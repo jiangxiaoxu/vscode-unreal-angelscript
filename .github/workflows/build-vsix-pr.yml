@@ -29,3 +29,4 @@ jobs:
         with:
           name: unreal-angelscript-vsix
           path: dist/unreal-angelscript.vsix
+          retention-days: 30

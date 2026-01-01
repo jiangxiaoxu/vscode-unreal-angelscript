@@ -1,0 +1,54 @@
+name: Cleanup old releases
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP_BETA: "10"
+          KEEP_RELEASE: "5"
+          LIST_LIMIT: "200"
+        run: |
+          set -euo pipefail
+
+          releases_json=$(gh release list --limit "$LIST_LIMIT" --json tagName,createdAt --jq '.')
+          if [ "$releases_json" = "[]" ]; then
+            echo "No releases found."
+            exit 0
+          fi
+
+          mapfile -t beta_tags < <(
+            printf '%s\n' "$releases_json" \
+              | jq -r '[.[] | select(.tagName | contains("-beta-"))] | sort_by(.createdAt) | reverse | .[].tagName'
+          )
+          mapfile -t release_tags < <(
+            printf '%s\n' "$releases_json" \
+              | jq -r '[.[] | select(.tagName | contains("-release-"))] | sort_by(.createdAt) | reverse | .[].tagName'
+          )
+
+          delete_old() {
+            local keep="$1"
+            shift
+            local tags=("$@")
+            if [ "${#tags[@]}" -le "$keep" ]; then
+              echo "Nothing to delete (keep=$keep)."
+              return 0
+            fi
+            for tag in "${tags[@]:$keep}"; do
+              echo "Deleting release $tag"
+              gh release delete "$tag" -y
+            done
+          }
+
+          delete_old "$KEEP_BETA" "${beta_tags[@]}"
+          delete_old "$KEEP_RELEASE" "${release_tags[@]}"
