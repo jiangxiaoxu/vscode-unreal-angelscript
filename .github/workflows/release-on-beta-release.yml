@@ -62,6 +62,18 @@ jobs:
           mkdir -p dist
           npx -y @vscode/vsce package --out "./dist/unreal-angelscript-${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }}.vsix"
 
+      - name: Publish to VS Code Marketplace (beta)
+        if: ${{ github.ref_name == 'beta' }}
+        run: npx -y @vscode/vsce publish --pre-release -p "${VSCE_PAT}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to VS Code Marketplace (release)
+        if: ${{ github.ref_name == 'release' }}
+        run: npx -y @vscode/vsce publish -p "${VSCE_PAT}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
