@@ -742,8 +742,9 @@
         "zod": "^3.25.0"
     },
     "scripts": {
-        "vscode:prepublish": "npm run compile",
+        "vscode:prepublish": "npm run compile && npm run bundle",
         "compile": "tsc -b",
+        "bundle": "node ./scripts/bundle.mjs",
         "watch": "tsc -b -w",
         "postinstall": "cd extension && npm install && cd ../language-server && npm install && cd ..",
         "pegjs:compile": "cd language-server/pegjs && peggy angelscript.pegjs --allowed-start-rules start,start_global,start_class,start_enum",
@@ -754,6 +755,7 @@
         "@types/node": "^22.10.1",
         "@typescript-eslint/eslint-plugin": "^4.21.0",
         "@typescript-eslint/parser": "^4.21.0",
+        "esbuild": "^0.27.2",
         "eslint": "^7.23.0",
         "mocha": "^11.7.1",
         "peggy": "^3.0.2",

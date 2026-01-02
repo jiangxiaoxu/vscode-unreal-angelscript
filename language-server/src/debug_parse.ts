@@ -1,5 +1,5 @@
 import * as parser from './as_parser';
-import * as glob from 'glob';
+import glob from 'glob';
 import * as fs from 'fs';
 
 import { performance } from "perf_hooks";
