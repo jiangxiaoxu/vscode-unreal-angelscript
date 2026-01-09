@@ -423,10 +423,10 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                         item.iconPath = new vscode.ThemeIcon("symbol-namespace", new vscode.ThemeColor("terminal.ansiBrightBlue"));
                         items.push(item);
                     }
-                    else if (api.type == "function")
+                    else if (api.type == "type")
                     {
                         let item = new ASApiItem(api.label);
-                        item.id = `__fun_${api.id}`;
+                        item.id = `__type_${api.id}`;
                         item.data = api.data;
                         item.type = api.type;
                         item.command = {
@@ -434,7 +434,35 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
                             "command": "angelscript-api-list.view-details",
                             "arguments": [api.data],
                         };
-                        item.iconPath = new vscode.ThemeIcon("symbol-function", new vscode.ThemeColor("terminal.ansiBrightYellow"));
+                        let typeColor = new vscode.ThemeColor("charts.cyan");
+                        let typeIcon = "symbol-class";
+                        if (Array.isArray(api.data) && api.data[0] == "type")
+                        {
+                            let typeKind = api.data[3] as string;
+                            if (typeKind == "enum")
+                                typeIcon = "symbol-enum";
+                            else if (typeKind == "struct")
+                                typeIcon = "symbol-struct";
+                        }
+                        item.iconPath = new vscode.ThemeIcon(typeIcon, typeColor);
+                        items.push(item);
+                    }
+                    else if (api.type == "function")
+                    {
+                        let item = new ASApiItem(api.label);
+                        item.id = `__fun_${api.id}`;
+                        item.data = api.data;
+                        item.type = api.type;
+                        let isConstructor = typeof api.label === "string" && api.label.startsWith("<ctor>");
+                        item.command = {
+                            "title": "View Details",
+                            "command": "angelscript-api-list.view-details",
+                            "arguments": [api.data],
+                        };
+                        item.iconPath = new vscode.ThemeIcon(
+                            isConstructor ? "symbol-constructor" : "symbol-function",
+                            new vscode.ThemeColor(isConstructor ? "charts.orange" : "terminal.ansiBrightYellow")
+                        );
                         items.push(item);
                     }
                     else if (api.type == "property")
