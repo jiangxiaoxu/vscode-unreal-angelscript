@@ -9,6 +9,7 @@ This branch specifically implements the runtime required to expose Language Mode
 为了让 Codex 通过 MCP 调用同样的 `angelscript_searchApi` 能力，本仓库增加了一个内置的
 Streamable HTTP MCP server，会复用 Angelscript language server 的 API 搜索逻辑。
 对外暴露工具名：`angelscript_searchApi`（输入/输出与现有 schema 一致，输出为 JSON 字符串；`maxResults` 默认为 1000）。
+查询规则：空格表示“有序通配”（`a b` 可匹配 `a...b`），`|` 表示 OR 分隔；`.`/`::` 无空格时要求紧邻（如 `UObject.`、`Math::`），带空格时为模糊分隔（如 `UObject .`、`Math ::`）。
 
 默认行为：
 - 扩展启动后每 1 秒检查 `localhost:<端口>/health` 是否存在 MCP 服务（校验 `serverId`，超时 300–500ms）。

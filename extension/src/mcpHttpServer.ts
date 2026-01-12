@@ -277,7 +277,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
     server.registerTool(
         'angelscript_searchApi',
         {
-            description: 'Search Angelscript API symbols and docs. Defaults: maxResults=1000, includeDetails=true. Omit both unless you need different values.',
+            description: 'Search Angelscript API symbols and docs. Spaces act as ordered wildcards; use "a b" to match a...b. Use "|" to separate alternate queries (OR). Use "." or "::" to require those separators; without a space they must be adjacent (e.g., "UObject." or "Math::"), with a space they stay fuzzy (e.g., "UObject ." or "Math ::"). Defaults: maxResults=1000, includeDetails=true.',
             inputSchema: {
                 query: z.string().describe('Search query text for Angelscript API symbols.'),
                 maxResults: z.number().min(1000).optional().describe('Maximum number of results. Minimum is 1000. Default is 1000. Do NOT pass this parameter unless you need a specific value. Never pass values below 1000.'),

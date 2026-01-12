@@ -2,7 +2,7 @@
     "name": "unreal-angelscript-tool-calling-fork",
     "displayName": "Unreal Angelscript Tool-calling (Fork)",
     "description": "Language Server and Debug Adapter for the UnrealEngine-Angelscript plugin. Based on https://github.com/jiangxiaoxu/vscode-unreal-angelscript-tool-calling (forked from https://github.com/Hazelight/UnrealEngine-Angelscript).",
-    "version": "1.8.8007",
+    "version": "1.8.8008",
     "publisher": "jiangxiaoxu",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -41,7 +41,7 @@
                 ],
                 "toolReferenceName": "angelscript_searchApi",
                 "displayName": "Angelscript API Search",
-                "modelDescription": "Search Angelscript API symbols and docs. Defaults: maxResults=1000, includeDetails=true. Omit both unless you need different values.",
+                "modelDescription": "Search Angelscript API symbols and docs. Spaces act as ordered wildcards; use 'a b' to match a...b. Use '|' to separate alternate queries (OR). Use '.' or '::' to require those separators; without a space before them they must be adjacent (e.g., 'UObject.' or 'Math::'), with a space they stay fuzzy (e.g., 'UObject .' or 'Math ::'). Defaults: maxResults=1000, includeDetails=true.",
                 "canBeReferencedInPrompt": true,
                 "icon": "$(search)",
                 "inputSchema": {
