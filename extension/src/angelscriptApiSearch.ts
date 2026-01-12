@@ -1,5 +1,5 @@
 import { LanguageClient } from 'vscode-languageclient/node';
-import { GetAPIDetailsRequest, GetAPISearchRequest } from './apiRequests';
+import { GetAPIDetailsRequest, GetAPISearchRequest, GetUnrealConnectionStatusRequest } from './apiRequests';
 
 export type AngelscriptSearchParams = {
     query: string;
@@ -21,6 +21,18 @@ export type ApiResponsePayload = {
     truncated: boolean;
     items: ApiResultItem[];
 };
+
+export async function isUnrealConnected(client: LanguageClient): Promise<boolean>
+{
+    try
+    {
+        const result = await client.sendRequest(GetUnrealConnectionStatusRequest);
+        return result === true;
+    } catch
+    {
+        return false;
+    }
+}
 
 export async function buildSearchPayload(
     client: LanguageClient,

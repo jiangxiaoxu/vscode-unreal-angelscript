@@ -75,6 +75,7 @@ let IsServicingQueues = false;
 let ReceivingTypesTimeout : any = null;
 let SetTypeTimeout = false;
 let UnrealTypesTimedOut = false;
+let UnrealConnected = false;
 
 let settings : any = null;
 let reconnectTimeoutId : any = undefined;
@@ -95,6 +96,7 @@ function connect_unreal()
         unreal.write(Uint8Array.from(buildDisconnect()));
         unreal.destroy();
     }
+    UnrealConnected = false;
     unreal = new Socket;
 
     unreal.on("data", function(data : Buffer) {
@@ -247,6 +249,7 @@ function connect_unreal()
         {
             unreal.destroy();
             unreal = null;
+            UnrealConnected = false;
             if (!reconnectTimeoutId)
                 reconnectTimeoutId = setTimeout(connect_unreal, 5000);
         }
@@ -258,6 +261,7 @@ function connect_unreal()
         {
             unreal.destroy();
             unreal = null;
+            UnrealConnected = false;
             if (!reconnectTimeoutId)
                 reconnectTimeoutId = setTimeout(connect_unreal, 5000);
         }
@@ -266,6 +270,7 @@ function connect_unreal()
     unreal.connect(port, hostname, function()
     {
         // connection.console.log('Connection to unreal editor established.');
+        UnrealConnected = true;
         setTimeout(function()
         {
             if (!unreal)
@@ -1046,6 +1051,10 @@ connection.onRequest("angelscript/getModuleForSymbol", (...params: any[]) : stri
             return "-";
         return moduleName;
     }
+});
+
+connection.onRequest("angelscript/getUnrealConnectionStatus", () : boolean => {
+    return UnrealConnected;
 });
 
 connection.onRequest("angelscript/getAPI", (root : string) : any => {

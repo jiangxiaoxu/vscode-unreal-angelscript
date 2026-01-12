@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
 import { ASDebugSession } from './debug';
 import * as Net from 'net';
-import { buildSearchPayload, AngelscriptSearchParams } from './angelscriptApiSearch';
+import { buildSearchPayload, AngelscriptSearchParams, isUnrealConnected } from './angelscriptApiSearch';
 import { GetAPIRequest, GetAPIDetailsRequest, GetAPISearchRequest, GetModuleForSymbolRequest, ProvideInlineValuesRequest } from './apiRequests';
 import { startMcpHttpServerManager } from './mcpHttpServer';
 
@@ -231,6 +231,15 @@ class AngelscriptSearchApiTool implements vscode.LanguageModelTool<AngelscriptSe
         try
         {
             await this.startedClient;
+            const isConnected = await isUnrealConnected(this.client);
+            if (!isConnected)
+            {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(
+                        "Unable to connect to the UE5 engine; the angelscript_searchApi tool is unavailable."
+                    )
+                ]);
+            }
             const payload = await buildSearchPayload(
                 this.client,
                 {

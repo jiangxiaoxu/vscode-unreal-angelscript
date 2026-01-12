@@ -12,7 +12,8 @@ import
 {
     ApiResponsePayload,
     ApiResultItem,
-    buildSearchPayload
+    buildSearchPayload,
+    isUnrealConnected
 } from './angelscriptApiSearch';
 import { GetAPIDetailsRequest } from './apiRequests';
 
@@ -302,6 +303,18 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
             try
             {
                 await startedClient;
+                const isConnected = await isUnrealConnected(client);
+                if (!isConnected)
+                {
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: 'Unable to connect to the UE5 engine; the angelscript_searchApi tool is unavailable.'
+                            }
+                        ]
+                    };
+                }
                 const payload = await buildSearchPayload(
                     client,
                     {
@@ -386,6 +399,19 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
             try
             {
                 await startedClient;
+                const isConnected = await isUnrealConnected(client);
+                if (!isConnected)
+                {
+                    return {
+                        contents: [
+                            {
+                                uri: uri.toString(),
+                                mimeType: 'text/plain',
+                                text: 'Unable to connect to the UE5 engine; the angelscript_searchApi tool is unavailable.'
+                            }
+                        ]
+                    };
+                }
                 const payload = await buildSearchPayload(
                     client,
                     {
