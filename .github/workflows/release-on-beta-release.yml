@@ -32,13 +32,6 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Get commit date tag
-        id: commit
-        run: |
-          COMMIT_TS=$(git log -1 --format=%ct)
-          COMMIT_DATE=$(date -u -d "@$COMMIT_TS" +%Y-%m-%d)
-          echo "commit_date=$COMMIT_DATE" >> "$GITHUB_OUTPUT"
-
       - name: Resolve release channel
         id: channel
         run: |
@@ -84,12 +77,11 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }}-${{ steps.commit.outputs.commit_date }}
-          name: Unreal Angelscript v${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }} (${{ steps.commit.outputs.commit_date }})
+          tag_name: v${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }}
+          name: Unreal Angelscript v${{ steps.meta.outputs.version }}${{ steps.channel.outputs.tag_suffix }}
           body: |
             Automated release.
             Version: v${{ steps.meta.outputs.version }}
-            Commit date: ${{ steps.commit.outputs.commit_date }}
             Branch: ${{ github.ref_name }}
           files: dist/*.vsix
           prerelease: ${{ steps.channel.outputs.prerelease }}
