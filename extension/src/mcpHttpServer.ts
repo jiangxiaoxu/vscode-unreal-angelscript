@@ -31,7 +31,7 @@ type McpHttpServerState = {
 
 const SERVER_ID = 'angelscript-api-mcp';
 const RESOURCE_BASE = `mcp://${SERVER_ID}/`;
-const SEARCH_RESOURCE_TEMPLATE = `${RESOURCE_BASE}search{?query,limit,includeDetails}`;
+const SEARCH_RESOURCE_TEMPLATE = `${RESOURCE_BASE}search{?query,maxResults,includeDetails}`;
 const SYMBOL_RESOURCE_TEMPLATE = `${RESOURCE_BASE}symbol/{id}`;
 const HEALTH_TIMEOUT_MS = 400;
 const POLL_INTERVAL_OK_MS = 3000;
@@ -69,7 +69,7 @@ function decodeURIComponentSafe(value: string | undefined): string | undefined
     }
 }
 
-function parseLimit(raw: string | undefined): number | undefined
+function parseMaxResults(raw: string | undefined): number | undefined
 {
     if (!raw)
     {
@@ -277,10 +277,10 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
     server.registerTool(
         'angelscript_searchApi',
         {
-            description: 'Search the Angelscript API database for symbols and documentation. The limit parameter defaults to 1000 and must not be below 1000. The includeDetails parameter defaults to true and should not be passed unless you specifically need to exclude documentation. Do NOT pass limit or includeDetails unless you need specific values. Omit both parameters to use defaults.',
+            description: 'Search Angelscript API symbols and docs. Defaults: maxResults=1000, includeDetails=true. Omit both unless you need different values.',
             inputSchema: {
                 query: z.string().describe('Search query text for Angelscript API symbols.'),
-                limit: z.number().min(1000).optional().describe('Maximum number of results. Minimum is 1000. Default is 1000. Do NOT pass this parameter unless you need a specific value. Never pass values below 1000.'),
+                maxResults: z.number().min(1000).optional().describe('Maximum number of results. Minimum is 1000. Default is 1000. Do NOT pass this parameter unless you need a specific value. Never pass values below 1000.'),
                 includeDetails: z.boolean().optional().describe('Include documentation details for top matches. Default is true. Do NOT pass this parameter unless you specifically need to exclude documentation. Omit to use the default.')
             }
         },
@@ -306,7 +306,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                     client,
                     {
                         query,
-                        limit: args?.limit,
+                        maxResults: args?.maxResults,
                         includeDetails: args?.includeDetails
                     },
                     () => extra.signal.aborted
@@ -358,7 +358,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
         async (uri, variables, extra) =>
         {
             const query = decodeURIComponentSafe(getSingleVariable(variables, 'query'))?.trim() ?? '';
-            const limit = parseLimit(getSingleVariable(variables, 'limit'));
+            const maxResults = parseMaxResults(getSingleVariable(variables, 'maxResults'));
             const includeDetailsParam = parseIncludeDetails(getSingleVariable(variables, 'includeDetails'));
             // Default to true when unspecified to match buildSearchPayload behavior (includeDetails !== false).
             const includeDetails = includeDetailsParam ?? true;
@@ -390,7 +390,7 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                     client,
                     {
                         query,
-                        limit,
+                        maxResults,
                         includeDetails
                     },
                     () => extra.signal?.aborted ?? false

@@ -2,7 +2,7 @@
     "name": "unreal-angelscript-tool-calling-fork",
     "displayName": "Unreal Angelscript Tool-calling (Fork)",
     "description": "Language Server and Debug Adapter for the UnrealEngine-Angelscript plugin. Based on https://github.com/jiangxiaoxu/vscode-unreal-angelscript-tool-calling (forked from https://github.com/Hazelight/UnrealEngine-Angelscript).",
-    "version": "1.8.8006",
+    "version": "1.8.8007",
     "publisher": "jiangxiaoxu",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -41,7 +41,7 @@
                 ],
                 "toolReferenceName": "angelscript_searchApi",
                 "displayName": "Angelscript API Search",
-                "modelDescription": "Search the Angelscript API database for symbols and documentation. The limit parameter defaults to 1000 and must not be below 1000. The includeDetails parameter defaults to true and should not be passed unless you specifically need to exclude documentation. Do NOT pass limit or includeDetails unless you need specific values. Omit both parameters to use defaults.",
+                "modelDescription": "Search Angelscript API symbols and docs. Defaults: maxResults=1000, includeDetails=true. Omit both unless you need different values.",
                 "canBeReferencedInPrompt": true,
                 "icon": "$(search)",
                 "inputSchema": {
@@ -51,7 +51,7 @@
                             "type": "string",
                             "description": "Search query text for Angelscript API symbols."
                         },
-                        "limit": {
+                        "maxResults": {
                             "type": "number",
                             "description": "Maximum number of results. Minimum is 1000. Default is 1000. Do NOT pass this parameter unless you need a specific value. Never pass values below 1000.",
                             "default": 1000,
@@ -502,17 +502,17 @@
                 "UnrealAngelscript.mcp.enabled": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Enable the built-in MCP Streamable HTTP server for tool calling."
+                    "description": "Enable the built-in MCP server for tool calling."
                 },
                 "UnrealAngelscript.mcp.port": {
                     "type": "number",
                     "default": 0,
-                    "description": "Port for the built-in MCP Streamable HTTP server. Set to 0 to use Unreal connection port + 100."
+                    "description": "Port for the MCP server. 0 uses Unreal connection port + 100."
                 },
                 "UnrealAngelscript.mcp.maxStartupFailures": {
                     "type": "number",
                     "default": 5,
-                    "description": "Maximum failed startup attempts before stopping MCP server retries."
+                    "description": "Maximum failed startups before MCP retries stop."
                 }
             }
         },

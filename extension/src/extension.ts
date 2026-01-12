@@ -235,7 +235,7 @@ class AngelscriptSearchApiTool implements vscode.LanguageModelTool<AngelscriptSe
                 this.client,
                 {
                     query,
-                    limit: options?.input?.limit,
+                    maxResults: options?.input?.maxResults,
                     includeDetails: options?.input?.includeDetails
                 },
                 () => token.isCancellationRequested

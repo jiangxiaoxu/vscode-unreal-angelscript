@@ -3,7 +3,7 @@ import { GetAPIDetailsRequest, GetAPISearchRequest } from './apiRequests';
 
 export type AngelscriptSearchParams = {
     query: string;
-    limit?: number;
+    maxResults?: number;
     includeDetails?: boolean;
 };
 
@@ -29,8 +29,8 @@ export async function buildSearchPayload(
 ): Promise<ApiResponsePayload>
 {
     const query = typeof params.query === 'string' ? params.query.trim() : '';
-    const limit = typeof params.limit === 'number'
-        ? Math.max(Math.floor(params.limit), 1000)
+    const maxResults = typeof params.maxResults === 'number'
+        ? Math.max(Math.floor(params.maxResults), 1000)
         : 1000;
     const includeDetails = params.includeDetails !== false;
 
@@ -57,7 +57,7 @@ export async function buildSearchPayload(
         };
     }
 
-    const items = results.slice(0, limit);
+    const items = results.slice(0, maxResults);
     const payload: ApiResponsePayload = {
         query,
         total: results.length,
