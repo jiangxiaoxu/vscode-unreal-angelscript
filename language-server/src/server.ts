@@ -1151,6 +1151,22 @@ connection.onRequest("angelscript/getAPIDetailsBatch", (roots : any) : any => {
     return promise;
 });
 
+connection.onRequest("angelscript/getTypeMembers", (params : any) : any => {
+    if (typedb.HasTypesFromUnreal())
+        return api_docs.GetTypeMembers(params);
+
+    function timerFunc(resolve : any, reject : any, triesLeft : number) {
+        if (typedb.HasTypesFromUnreal())
+            return resolve(api_docs.GetTypeMembers(params));
+        setTimeout(function() { timerFunc(resolve, reject, triesLeft-1); }, 100);
+    }
+    let promise = new Promise<any>(function(resolve, reject)
+    {
+        timerFunc(resolve, reject, 50);
+    });
+    return promise;
+});
+
 connection.languages.inlineValue.on(function (params : InlineValueParams) : Array<InlineValue> {
     let asmodule = GetAndParseModule(params.textDocument.uri);
     if (!asmodule)

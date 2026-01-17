@@ -2,7 +2,7 @@
     "name": "unreal-angelscript-tool-calling-fork",
     "displayName": "Unreal Angelscript Tool-calling (Fork)",
     "description": "Language Server and Debug Adapter for the UnrealEngine-Angelscript plugin. Based on https://github.com/jiangxiaoxu/vscode-unreal-angelscript-tool-calling (forked from https://github.com/Hazelight/UnrealEngine-Angelscript).",
-    "version": "1.8.8016",
+    "version": "1.8.8018",
     "publisher": "jiangxiaoxu",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -15,7 +15,8 @@
     "activationEvents": [
         "onDebug",
         "onLanguageModelTool:angelscript_searchApi",
-        "onLanguageModelTool:angelscript_resolveSymbolAtPosition"
+        "onLanguageModelTool:angelscript_resolveSymbolAtPosition",
+        "onLanguageModelTool:angelscript_getTypeMembers"
     ],
     "repository": {
         "type": "git",
@@ -105,6 +106,56 @@
                     "required": [
                         "labelQuery",
                         "searchIndex"
+                    ]
+                }
+            },
+            {
+                "name": "angelscript_getTypeMembers",
+                "tags": [
+                    "angelscript",
+                    "type",
+                    "members"
+                ],
+                "toolReferenceName": "angelscript_getTypeMembers",
+                "displayName": "Angelscript Type Members",
+                "modelDescription": "List members for a given Angelscript type, optionally including inherited members. Returns methods, properties, accessors, and mixins with visibility-qualified signatures and plain-text descriptions.",
+                "userDescription": "List members for a given Angelscript type, optionally including inherited members.",
+                "canBeReferencedInPrompt": true,
+                "icon": "$(symbol-class)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Type name to inspect."
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "description": "Optional namespace to disambiguate type name. Use empty string for root namespace."
+                        },
+                        "includeInherited": {
+                            "type": "boolean",
+                            "description": "Optional. Include inherited members. Default is false.",
+                            "default": false
+                        },
+                        "includeDocs": {
+                            "type": "boolean",
+                            "description": "Optional. Include description text. Default is false.",
+                            "default": false
+                        },
+                        "kinds": {
+                            "type": "string",
+                            "description": "Optional. Filter by member kind. Default is both.",
+                            "enum": [
+                                "both",
+                                "method",
+                                "property"
+                            ],
+                            "default": "both"
+                        }
+                    },
+                    "required": [
+                        "name"
                     ]
                 }
             },

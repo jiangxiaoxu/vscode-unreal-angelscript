@@ -17,7 +17,7 @@ import
     isUnrealConnected,
     toApiErrorPayload
 } from './angelscriptApiSearch';
-import { GetAPIDetailsRequest, ResolveSymbolAtPositionRequest } from './apiRequests';
+import { GetAPIDetailsRequest, GetTypeMembersRequest, GetTypeMembersResult, ResolveSymbolAtPositionRequest } from './apiRequests';
 
 type McpTransport = {
     handleRequest: (req: http.IncomingMessage, res: http.ServerResponse, body: unknown) => Promise<void>;
@@ -577,6 +577,104 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                         {
                             type: 'text',
                             text: 'The resolveSymbolAtPosition tool failed to run. Please ensure the language server is running and try again.'
+                        }
+                    ]
+                };
+            }
+        }
+    );
+
+    server.registerTool(
+        'angelscript_getTypeMembers',
+        {
+            description: 'List all members (methods, properties, accessors, mixins) for a type, including inherited members when requested.',
+            inputSchema: {
+                name: z.string().describe('Type name to inspect.'),
+                namespace: z.string().optional().describe('Optional namespace to disambiguate type name. Use empty string for root namespace.'),
+                includeInherited: z.boolean().optional().describe('Include inherited members (default false).'),
+                includeDocs: z.boolean().optional().describe('Include description text (default false).'),
+                kinds: z.enum(['both', 'method', 'property']).optional().describe('Filter by member kind (default both).')
+            }
+        },
+        async (args) =>
+        {
+            const name = typeof args?.name === 'string' ? args.name.trim() : '';
+            if (!name)
+            {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify({
+                                ok: false,
+                                error: {
+                                    code: 'InvalidParams',
+                                    message: "Invalid params. 'name' must be a non-empty string."
+                                }
+                            }, null, 2)
+                        }
+                    ]
+                };
+            }
+
+            const namespace = typeof args?.namespace === 'string' ? args.namespace.trim() : undefined;
+            const includeInherited = args?.includeInherited === true;
+            const includeDocs = args?.includeDocs === true;
+            const kinds = typeof args?.kinds === 'string' ? args.kinds.trim() : undefined;
+
+            try
+            {
+                await startedClient;
+                const isConnected = await isUnrealConnected(client);
+                if (!isConnected)
+                {
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: JSON.stringify({
+                                    ok: false,
+                                    error: {
+                                        code: 'UE_UNAVAILABLE',
+                                        message: 'Unable to connect to the UE5 engine; the angelscript_getTypeMembers tool is unavailable.'
+                                    }
+                                }, null, 2)
+                            }
+                        ]
+                    };
+                }
+                const result = await client.sendRequest<GetTypeMembersResult>(
+                    GetTypeMembersRequest.method,
+                    {
+                    name,
+                    namespace,
+                    includeInherited,
+                    includeDocs,
+                    kinds,
+                }
+            );
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify(result, null, 2)
+                        }
+                    ]
+                };
+            }
+            catch
+            {
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: JSON.stringify({
+                                ok: false,
+                                error: {
+                                    code: 'INTERNAL_ERROR',
+                                    message: 'The angelscript_getTypeMembers tool failed to run. Please ensure the language server is running and try again.'
+                                }
+                            }, null, 2)
                         }
                     ]
                 };

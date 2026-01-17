@@ -19,6 +19,9 @@ import {
     GetAPIDetailsRequest,
     GetAPISearchRequest,
     GetModuleForSymbolRequest,
+    GetTypeMembersParams,
+    GetTypeMembersRequest,
+    GetTypeMembersResult,
     ProvideInlineValuesRequest,
     ResolveSymbolAtPositionParams,
     ResolveSymbolAtPositionRequest,
@@ -213,6 +216,11 @@ export function activate(context: ExtensionContext)
             new AngelscriptResolveSymbolAtPositionTool(client, startedClient)
         );
         context.subscriptions.push(resolveSymbolToolDisposable);
+        const getTypeMembersToolDisposable = vscode.lm.registerTool(
+            "angelscript_getTypeMembers",
+            new AngelscriptGetTypeMembersTool(client, startedClient)
+        );
+        context.subscriptions.push(getTypeMembersToolDisposable);
     }
 
     startMcpHttpServerManager(context, client, startedClient);
@@ -425,6 +433,117 @@ class AngelscriptResolveSymbolAtPositionTool implements vscode.LanguageModelTool
             return new vscode.LanguageModelToolResult([
                 new vscode.LanguageModelTextPart(
                     "The resolveSymbolAtPosition tool failed to run. Please ensure the language server is running and try again."
+                )
+            ]);
+        }
+    }
+}
+
+class AngelscriptGetTypeMembersTool implements vscode.LanguageModelTool<GetTypeMembersParams>
+{
+    client: LanguageClient;
+    startedClient: Promise<void>;
+
+    constructor(client: LanguageClient, startedClient: Promise<void>)
+    {
+        this.client = client;
+        this.startedClient = startedClient;
+    }
+
+    prepareInvocation(
+        options: vscode.LanguageModelToolInvocationPrepareOptions<GetTypeMembersParams>,
+        token: CancellationToken
+    ): vscode.ProviderResult<vscode.PreparedToolInvocation>
+    {
+        const input = options?.input;
+        const name = typeof input?.name === "string" ? input.name.trim() : "";
+        const namespace = typeof input?.namespace === "string" ? input.namespace.trim() : "";
+        const includeInherited = input?.includeInherited === true ? "true" : "false";
+        const includeDocs = input?.includeDocs === true ? "true" : "false";
+        const kinds = typeof input?.kinds === "string" ? input.kinds.trim() : "both";
+        const details: string[] = [];
+        if (namespace)
+            details.push(`namespace=${namespace}`);
+        details.push(`includeInherited=${includeInherited}`);
+        details.push(`includeDocs=${includeDocs}`);
+        details.push(`kinds=${kinds || "both"}`);
+        const label = name ? `"${name}"` : "<empty>";
+        return {
+            invocationMessage: `Get Angelscript type members ${label} (${details.join(", ")})`
+        };
+    }
+
+    async invoke(
+        options: vscode.LanguageModelToolInvocationOptions<GetTypeMembersParams>,
+        token: CancellationToken
+    ): Promise<vscode.LanguageModelToolResult>
+    {
+        const input = options?.input;
+        const name = typeof input?.name === "string" ? input.name.trim() : "";
+        if (!name)
+        {
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(JSON.stringify({
+                    ok: false,
+                    error: {
+                        code: "InvalidParams",
+                        message: "Invalid params. 'name' must be a non-empty string."
+                    }
+                }, null, 2))
+            ]);
+        }
+
+        const namespace = typeof input?.namespace === "string" ? input.namespace.trim() : undefined;
+        const includeInherited = input?.includeInherited === true;
+        const includeDocs = input?.includeDocs === true;
+        const kinds = typeof input?.kinds === "string" ? input.kinds.trim() : undefined;
+
+        try
+        {
+            await this.startedClient;
+            const isConnected = await isUnrealConnected(this.client);
+            if (!isConnected)
+            {
+                return new vscode.LanguageModelToolResult([
+                    new vscode.LanguageModelTextPart(
+                        JSON.stringify({
+                            ok: false,
+                            error: {
+                                code: "UE_UNAVAILABLE",
+                                message: "Unable to connect to the UE5 engine; the angelscript_getTypeMembers tool is unavailable."
+                            }
+                        }, null, 2)
+                    )
+                ]);
+            }
+
+            const result = await this.client.sendRequest<GetTypeMembersResult>(
+                GetTypeMembersRequest.method,
+                {
+                    name,
+                    namespace,
+                    includeInherited,
+                    includeDocs,
+                    kinds,
+                }
+            ) as GetTypeMembersResult;
+
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(JSON.stringify(result, null, 2))
+            ]);
+        }
+        catch (error)
+        {
+            console.error("angelscript_getTypeMembers tool failed:", error);
+            return new vscode.LanguageModelToolResult([
+                new vscode.LanguageModelTextPart(
+                    JSON.stringify({
+                        ok: false,
+                        error: {
+                            code: "INTERNAL_ERROR",
+                            message: "The angelscript_getTypeMembers tool failed to run. Please ensure the language server is running and try again."
+                        }
+                    }, null, 2)
                 )
             ]);
         }
@@ -880,7 +999,6 @@ class ASEvaluateableExpressionProvider implements vscode.EvaluatableExpressionPr
                 case ';':
                 case '=':
                 case '|':
-                case ',':
                 case ',':
                 case '`':
                 case '!':

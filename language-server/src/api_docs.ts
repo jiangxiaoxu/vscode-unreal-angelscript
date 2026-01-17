@@ -4,6 +4,47 @@ import * as documentation from './documentation';
 
 type ApiSearchSource = "native" | "script" | "both";
 
+type TypeMemberVisibility = "public" | "protected" | "private";
+
+type TypeMembersParams = {
+    name: string;
+    namespace?: string;
+    includeInherited?: boolean;
+    includeDocs?: boolean;
+    kinds?: "both" | "method" | "property";
+};
+
+type TypeMemberInfo = {
+    kind: "method" | "property";
+    name: string;
+    signature: string;
+    description: string;
+    declaredIn: string;
+    declaredInKind: "type" | "namespace";
+    isInherited: boolean;
+    isMixin: boolean;
+    isAccessor: boolean;
+    accessorKind?: "get" | "set";
+    propertyName?: string;
+    visibility: TypeMemberVisibility;
+};
+
+type TypeMembersResult = {
+    ok: true;
+    type: {
+        name: string;
+        namespace: string;
+        qualifiedName: string;
+    };
+    members: TypeMemberInfo[];
+} | {
+    ok: false;
+    error: {
+        code: "NotFound" | "InvalidParams";
+        message: string;
+    };
+};
+
 function normalizeSearchSource(raw: unknown) : ApiSearchSource
 {
     if (typeof raw !== "string")
@@ -24,6 +65,203 @@ function matchesSearchSource(declaredModule: string | null | undefined, source: 
         return true;
     let isScript = typeof declaredModule == "string" && declaredModule.length > 0;
     return source == "script" ? isScript : !isScript;
+}
+
+function normalizeNamespaceName(raw: unknown) : string | null
+{
+    if (typeof raw !== "string")
+        return null;
+    let trimmed = raw.trim();
+    return trimmed.length > 0 ? trimmed : "";
+}
+
+function normalizeTypeMemberKinds(raw: unknown) : "both" | "method" | "property"
+{
+    if (typeof raw !== "string")
+        return "both";
+    let value = raw.trim().toLowerCase();
+    if (value == "method" || value == "property" || value == "both")
+        return value as "both" | "method" | "property";
+    return "both";
+}
+
+function splitQualifiedTypeName(name: string) : { typeName: string; namespaceName: string | null }
+{
+    let separatorIndex = name.lastIndexOf("::");
+    if (separatorIndex <= 0)
+        return { typeName: name, namespaceName: null };
+    let namespaceName = name.substring(0, separatorIndex);
+    let typeName = name.substring(separatorIndex + 2);
+    if (!typeName)
+        return { typeName: name, namespaceName: null };
+    return { typeName, namespaceName };
+}
+
+function resolveTypeByName(rawName: unknown, rawNamespace: unknown) : typedb.DBType | null
+{
+    if (typeof rawName !== "string")
+        return null;
+    let name = rawName.trim();
+    if (name.length == 0)
+        return null;
+
+    let namespaceName = normalizeNamespaceName(rawNamespace);
+    if (!namespaceName)
+    {
+        let split = splitQualifiedTypeName(name);
+        if (split.namespaceName)
+        {
+            namespaceName = split.namespaceName;
+            name = split.typeName;
+        }
+    }
+
+    let namespace : typedb.DBNamespace = null;
+    if (namespaceName !== null)
+    {
+        if (namespaceName.length == 0)
+            namespace = typedb.GetRootNamespace();
+        else
+            namespace = typedb.LookupNamespace(null, namespaceName);
+    }
+
+    let dbType = namespace ? typedb.LookupType(namespace, name) : typedb.GetTypeByName(name);
+    if (!dbType && namespace)
+        dbType = typedb.GetTypeByName(name);
+    return dbType;
+}
+
+function getTypeVisibility(isPrivate: boolean, isProtected: boolean) : TypeMemberVisibility
+{
+    if (isPrivate)
+        return "private";
+    if (isProtected)
+        return "protected";
+    return "public";
+}
+
+function getVisibilityPrefix(visibility: TypeMemberVisibility) : string
+{
+    if (visibility == "private")
+        return "private ";
+    if (visibility == "protected")
+        return "protected ";
+    return "";
+}
+
+function formatFunctionDocumentationPlain(doc : string) : string
+{
+    if (!doc)
+        return "";
+    let lines = doc.split("\n");
+    let result : Array<string> = [];
+
+    for (let line of lines)
+    {
+        let trimmed = line.trim();
+        if (trimmed.startsWith("@param"))
+        {
+            let match = trimmed.match(/@param\s+([A-Za-z0-9_]+)\s*(.*)/);
+            if (match)
+            {
+                let name = match[1];
+                let desc = match[2] ?? "";
+                let entry = desc.length > 0 ? `param ${name}: ${desc}` : `param ${name}`;
+                result.push(entry.trim());
+                continue;
+            }
+        }
+        if (trimmed.startsWith("@return"))
+        {
+            let desc = trimmed.substring(7).trim();
+            result.push(desc.length > 0 ? `return: ${desc}` : "return");
+            continue;
+        }
+        if (trimmed.startsWith("@note"))
+        {
+            let desc = trimmed.substring(5).trim();
+            result.push(desc.length > 0 ? `note: ${desc}` : "note");
+            continue;
+        }
+        if (trimmed.startsWith("@see"))
+        {
+            let desc = trimmed.substring(4).trim();
+            result.push(desc.length > 0 ? `see: ${desc}` : "see");
+            continue;
+        }
+        if (trimmed.length > 0)
+            result.push(trimmed);
+        else
+            result.push("");
+    }
+
+    return result.join("\n").trim();
+}
+
+function formatPropertyDocumentationPlain(doc : string) : string
+{
+    if (!doc)
+        return "";
+    let lines = doc.split("\n");
+    let result : Array<string> = [];
+
+    for (let line of lines)
+    {
+        let trimmed = line.trim();
+        if (trimmed.startsWith("@note"))
+        {
+            let desc = trimmed.substring(5).trim();
+            result.push(desc.length > 0 ? `note: ${desc}` : "note");
+            continue;
+        }
+        if (trimmed.startsWith("@see"))
+        {
+            let desc = trimmed.substring(4).trim();
+            result.push(desc.length > 0 ? `see: ${desc}` : "see");
+            continue;
+        }
+        if (trimmed.length > 0)
+            result.push(trimmed);
+        else
+            result.push("");
+    }
+
+    return result.join("\n").trim();
+}
+
+function buildAccessorSignature(method: typedb.DBMethod, prefix: string, accessorKind: "get" | "set", propertyName: string) : string
+{
+    if (accessorKind == "get")
+        return `${method.returnType} ${prefix}${propertyName}`;
+    if (method.isMixin)
+    {
+        if (method.args && method.args.length > 1)
+            return `${method.args[1].typename} ${prefix}${propertyName}`;
+    }
+    if (method.args && method.args.length > 0)
+        return `${method.args[0].typename} ${prefix}${propertyName}`;
+    return `${method.returnType} ${prefix}${propertyName}`;
+}
+
+function buildMethodSignature(method: typedb.DBMethod, declaredInName: string, isAccessor: boolean, accessorKind: "get" | "set" | null, propertyName: string | null) : string
+{
+    let prefix = "";
+    let skipFirstArg = false;
+    if (method.isMixin)
+    {
+        if (method.args && method.args.length > 0)
+            prefix = method.args[0].typename + ".";
+        skipFirstArg = true;
+    }
+    else if (declaredInName && declaredInName.length > 0)
+    {
+        prefix = declaredInName + ".";
+    }
+
+    if (isAccessor && accessorKind && propertyName)
+        return buildAccessorSignature(method, prefix, accessorKind, propertyName);
+
+    return method.format(prefix, skipFirstArg);
 }
 
 export function GetAPIList(root: string): any
@@ -333,6 +571,211 @@ export function GetAPIDetailsBatch(dataList: any[]): any
         return [];
 
     return dataList.map((data) => GetAPIDetails(data));
+}
+
+export function GetTypeMembers(params: TypeMembersParams) : TypeMembersResult
+{
+    if (!params || typeof params !== "object")
+        return { ok: false, error: { code: "InvalidParams", message: "Invalid params. Provide { name: string, namespace?: string, includeInherited?: boolean, includeDocs?: boolean, kinds?: 'both' | 'method' | 'property' }." } };
+
+    let name = typeof params.name === "string" ? params.name.trim() : "";
+    if (name.length == 0)
+        return { ok: false, error: { code: "InvalidParams", message: "Invalid params. 'name' must be a non-empty string." } };
+
+    let includeInherited = params.includeInherited === true;
+    let includeDocs = params.includeDocs === true;
+    let kinds = normalizeTypeMemberKinds(params.kinds);
+    let allowMethods = kinds != "property";
+    let allowProperties = kinds != "method";
+    let dbType = resolveTypeByName(name, params.namespace);
+    if (!dbType)
+        return { ok: false, error: { code: "NotFound", message: "Type not found." } };
+
+    let typeNamespace = dbType.namespace && !dbType.namespace.isRootNamespace()
+        ? dbType.namespace.getQualifiedNamespace()
+        : "";
+    let qualifiedName = dbType.getQualifiedTypenameInNamespace(null);
+
+    let members: TypeMemberInfo[] = [];
+    let seenMembers = new Set<string>();
+    let typeList = includeInherited ? dbType.getExtendTypesList() : [dbType];
+
+    for (let checkType of typeList)
+    {
+        let declaredInName = checkType.getQualifiedTypenameInNamespace(null);
+        let isInherited = checkType != dbType;
+
+        checkType.forEachSymbol(function (symbol: typedb.DBSymbol)
+        {
+            if (symbol instanceof typedb.DBMethod)
+            {
+                if (!allowMethods)
+                    return;
+                if (symbol.isConstructor)
+                    return;
+                if (isInherited && symbol.isPrivate)
+                    return;
+
+                let visibility = getTypeVisibility(symbol.isPrivate, symbol.isProtected);
+                let accessorKind : "get" | "set" | null = null;
+                let propertyName : string | null = null;
+                let isAccessor = false;
+                if (symbol.isProperty)
+                {
+                    if (symbol.name.startsWith("Get"))
+                    {
+                        accessorKind = "get";
+                        propertyName = symbol.name.substring(3);
+                        isAccessor = propertyName.length > 0;
+                    }
+                    else if (symbol.name.startsWith("Set"))
+                    {
+                        accessorKind = "set";
+                        propertyName = symbol.name.substring(3);
+                        isAccessor = propertyName.length > 0;
+                    }
+                }
+
+                let signature = buildMethodSignature(symbol, declaredInName, isAccessor, accessorKind, propertyName);
+                let description = "";
+                if (includeDocs)
+                    description = formatFunctionDocumentationPlain(symbol.findAvailableDocumentation());
+
+                signature = getVisibilityPrefix(visibility) + signature;
+
+                let key = `method|${symbol.id}|${declaredInName}`;
+                if (seenMembers.has(key))
+                    return;
+                seenMembers.add(key);
+
+                members.push({
+                    kind: "method",
+                    name: symbol.name,
+                    signature: signature,
+                    description: description ?? "",
+                    declaredIn: declaredInName,
+                    declaredInKind: "type",
+                    isInherited: isInherited,
+                    isMixin: symbol.isMixin,
+                    isAccessor: isAccessor,
+                    accessorKind: accessorKind ?? undefined,
+                    propertyName: propertyName ?? undefined,
+                    visibility: visibility,
+                });
+            }
+            else if (symbol instanceof typedb.DBProperty)
+            {
+                if (!allowProperties)
+                    return;
+                if (isInherited && symbol.isPrivate)
+                    return;
+
+                let visibility = getTypeVisibility(symbol.isPrivate, symbol.isProtected);
+                let prefix = declaredInName.length > 0 ? declaredInName + "." : "";
+                let signature = symbol.format(prefix);
+                let description = "";
+                if (includeDocs)
+                    description = formatPropertyDocumentationPlain(symbol.documentation);
+
+                let key = `property|${declaredInName}|${symbol.name}|${symbol.typename}`;
+                if (seenMembers.has(key))
+                    return;
+                seenMembers.add(key);
+
+                members.push({
+                    kind: "property",
+                    name: symbol.name,
+                    signature: signature,
+                    description: description ?? "",
+                    declaredIn: declaredInName,
+                    declaredInKind: "type",
+                    isInherited: isInherited,
+                    isMixin: false,
+                    isAccessor: false,
+                    visibility: visibility,
+                });
+            }
+        }, false);
+    }
+
+    let mixinSeen = new Set<number>();
+    let visitNamespace = function (namespace: typedb.DBNamespace)
+    {
+        if (!allowMethods)
+            return;
+        namespace.forEachSymbol(function (symbol: typedb.DBSymbol)
+        {
+            if (!(symbol instanceof typedb.DBMethod))
+                return;
+            if (!symbol.isMixin)
+                return;
+            if (!symbol.args || symbol.args.length == 0)
+                return;
+            if (!dbType.inheritsFrom(symbol.args[0].typename))
+                return;
+
+            if (mixinSeen.has(symbol.id))
+                return;
+            mixinSeen.add(symbol.id);
+
+            let namespaceName = namespace.isRootNamespace() ? "" : namespace.getQualifiedNamespace();
+            let visibility = getTypeVisibility(symbol.isPrivate, symbol.isProtected);
+            let accessorKind : "get" | "set" | null = null;
+            let propertyName : string | null = null;
+            let isAccessor = false;
+            if (symbol.isProperty)
+            {
+                if (symbol.name.startsWith("Get"))
+                {
+                    accessorKind = "get";
+                    propertyName = symbol.name.substring(3);
+                    isAccessor = propertyName.length > 0;
+                }
+                else if (symbol.name.startsWith("Set"))
+                {
+                    accessorKind = "set";
+                    propertyName = symbol.name.substring(3);
+                    isAccessor = propertyName.length > 0;
+                }
+            }
+
+            let signature = buildMethodSignature(symbol, "", isAccessor, accessorKind, propertyName);
+            let description = "";
+            if (includeDocs)
+                description = formatFunctionDocumentationPlain(symbol.findAvailableDocumentation());
+            signature = getVisibilityPrefix(visibility) + signature;
+
+            members.push({
+                kind: "method",
+                name: symbol.name,
+                signature: signature,
+                description: description ?? "",
+                declaredIn: namespaceName,
+                declaredInKind: "namespace",
+                isInherited: false,
+                isMixin: true,
+                isAccessor: isAccessor,
+                accessorKind: accessorKind ?? undefined,
+                propertyName: propertyName ?? undefined,
+                visibility: visibility,
+            });
+        });
+
+        for (let [_, child] of namespace.childNamespaces)
+            visitNamespace(child);
+    };
+
+    visitNamespace(typedb.GetRootNamespace());
+
+    return {
+        ok: true,
+        type: {
+            name: dbType.name,
+            namespace: typeNamespace,
+            qualifiedName: qualifiedName,
+        },
+        members: members,
+    };
 }
 
 export function GetAPISearch(filter: string, source?: string): any

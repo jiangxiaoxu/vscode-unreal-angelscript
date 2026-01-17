@@ -7,6 +7,44 @@ export const ProvideInlineValuesRequest = new RequestType<TextDocumentPositionPa
 export const GetAPIRequest = new RequestType<any, any[], void>('angelscript/getAPI');
 export const GetAPIDetailsRequest = new RequestType<any, string, void>('angelscript/getAPIDetails');
 export const GetAPIDetailsBatchRequest = new RequestType<any[], string[], void>('angelscript/getAPIDetailsBatch');
+export type GetTypeMembersParams = {
+    name: string;
+    namespace?: string;
+    includeInherited?: boolean;
+    includeDocs?: boolean;
+    kinds?: 'both' | 'method' | 'property';
+};
+export type TypeMemberVisibility = 'public' | 'protected' | 'private';
+export type TypeMemberInfo = {
+    kind: 'method' | 'property';
+    name: string;
+    signature: string;
+    description: string;
+    declaredIn: string;
+    declaredInKind: 'type' | 'namespace';
+    isInherited: boolean;
+    isMixin: boolean;
+    isAccessor: boolean;
+    accessorKind?: 'get' | 'set';
+    propertyName?: string;
+    visibility: TypeMemberVisibility;
+};
+export type GetTypeMembersResult = {
+    ok: true;
+    type: {
+        name: string;
+        namespace: string;
+        qualifiedName: string;
+    };
+    members: TypeMemberInfo[];
+} | {
+    ok: false;
+    error: {
+        code: 'NotFound' | 'InvalidParams';
+        message: string;
+    };
+};
+export const GetTypeMembersRequest = new RequestType<GetTypeMembersParams, GetTypeMembersResult, void>('angelscript/getTypeMembers');
 export type GetAPISearchParams = {
     filter: string;
     source?: SearchSource;
