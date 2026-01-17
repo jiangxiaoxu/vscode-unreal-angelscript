@@ -13,7 +13,7 @@ import * as vscode from 'vscode';
 import { WorkspaceFolder, DebugConfiguration, ProviderResult, CancellationToken } from 'vscode';
 import { ASDebugSession } from './debug';
 import * as Net from 'net';
-import { buildSearchPayload, AngelscriptSearchParams, isUnrealConnected, toApiErrorPayload } from './angelscriptApiSearch';
+import { buildSearchPayload, AngelscriptSearchParams, SearchSource, isUnrealConnected, toApiErrorPayload } from './angelscriptApiSearch';
 import {
     GetAPIRequest,
     GetAPIDetailsRequest,
@@ -389,6 +389,46 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
     {
         this.client = client;
         this.searchHtml = `
+        <style>
+        .api-search-toolbar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 90%;
+        }
+        .api-search-tabs {
+            display: inline-flex;
+            gap: 16px;
+            align-items: flex-end;
+            border-bottom: 1px solid var(--vscode-editorWidget-border, #808080);
+            padding-bottom: 2px;
+        }
+        .api-search-tab {
+            background: transparent;
+            border: none;
+            color: var(--vscode-descriptionForeground, #7a7a7a);
+            cursor: pointer;
+            padding: 4px 0 6px 0;
+            font-size: 105%;
+            font-weight: 500;
+            opacity: 0.65;
+            border-bottom: 2px solid transparent;
+        }
+        .api-search-tab[aria-selected="true"] {
+            opacity: 1;
+            color: var(--vscode-foreground, #d4d4d4);
+            border-bottom-color: var(--vscode-textLink-foreground, #3794ff);
+        }
+        </style>
+
+        <div class="api-search-toolbar" role="tablist" aria-label="Search source">
+            <div class="api-search-tabs">
+                <button class="api-search-tab" type="button" data-source="native" role="tab" aria-selected="false">Native</button>
+                <button class="api-search-tab" type="button" data-source="script" role="tab" aria-selected="false">Script</button>
+                <button class="api-search-tab" type="button" data-source="both" role="tab" aria-selected="true">Both</button>
+            </div>
+        </div>
         <input
             id="search"
             type="text"
@@ -399,9 +439,52 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
         <script>
         let vscode = acquireVsCodeApi();
         let searchBox = document.getElementById("search");
+        let sourceTabs = Array.from(document.querySelectorAll(".api-search-tab"));
+        let currentSource = "both";
+        let isValidSource = function(value) {
+            return value === "native" || value === "script" || value === "both";
+        };
+        let setSelectedSource = function(value) {
+            sourceTabs.forEach((tab) => {
+                let tabSource = tab.getAttribute("data-source");
+                tab.setAttribute("aria-selected", tabSource === value ? "true" : "false");
+            });
+        };
+        let state = vscode.getState();
+        if (state && typeof state.source === "string" && isValidSource(state.source))
+        {
+            currentSource = state.source;
+            setSelectedSource(currentSource);
+            vscode.postMessage({
+                search: searchBox.value,
+                source: currentSource
+            });
+        }
+        let getSelectedSource = function() {
+            let selected = sourceTabs.find((tab) => tab.getAttribute("aria-selected") === "true");
+            return selected ? selected.getAttribute("data-source") : "both";
+        };
         searchBox.addEventListener("input", function()
         {
-            vscode.postMessage(searchBox.value);
+            vscode.postMessage({
+                search: searchBox.value,
+                source: getSelectedSource()
+            });
+        });
+        sourceTabs.forEach((tab) => {
+            tab.addEventListener("click", function() {
+                let nextSource = tab.getAttribute("data-source") || "both";
+                if (nextSource === currentSource)
+                    return;
+                sourceTabs.forEach((other) => other.setAttribute("aria-selected", "false"));
+                tab.setAttribute("aria-selected", "true");
+                currentSource = nextSource;
+                vscode.setState({ source: currentSource });
+                vscode.postMessage({
+                    search: searchBox.value,
+                    source: currentSource
+                });
+            });
         });
         window.addEventListener("focus", function(event)
         {
@@ -418,6 +501,7 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
             enableScripts: true,
         };
         webviewView.webview.html = this.searchHtml;
+        this.tree.searchSource = "both";
 
         let searchProvider = this;
         webviewView.webview.onDidReceiveMessage(function (data: any)
@@ -428,7 +512,19 @@ class ASApiSearchProvider implements vscode.WebviewViewProvider
 
     onMessage(data: any)
     {
-        this.tree.search = data as string;
+        if (data && typeof data === "object" && typeof data.search === "string")
+        {
+            this.tree.search = data.search;
+            if (data.source === "native" || data.source === "script" || data.source === "both")
+                this.tree.searchSource = data.source;
+            else
+                this.tree.searchSource = "both";
+        }
+        else
+        {
+            this.tree.search = data as string;
+            this.tree.searchSource = "both";
+        }
         this.tree.refresh();
     }
 }
@@ -486,6 +582,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
 {
     client: LanguageClient;
     search: string;
+    searchSource: SearchSource = "both";
 
     private _onDidChangeTreeData: vscode.EventEmitter<ASApiItem | undefined | void> = new vscode.EventEmitter<ASApiItem | undefined | void>();
     readonly onDidChangeTreeData: vscode.Event<ASApiItem | undefined | void> = this._onDidChangeTreeData.event;
@@ -513,7 +610,7 @@ class ASApiTreeProvider implements vscode.TreeDataProvider<ASApiItem>
         else if (this.search)
             request = this.client.sendRequest(GetAPISearchRequest, {
                 filter: this.search,
-                source: "both"
+                source: this.searchSource
             });
         else
             request = this.client.sendRequest(GetAPIRequest, "");

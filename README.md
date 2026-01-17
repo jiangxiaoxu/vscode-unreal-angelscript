@@ -29,6 +29,10 @@ Streamable HTTP MCP server，会复用 Angelscript language server 的 API 搜�
 mcp://angelscript-api-mcp/search?labelQuery=UObject&searchIndex=0&source=script&kinds=class
 ```
 
+UI 说明：
+- Search 面板顶部提供 Native / Script / Both 选项卡用于切换搜索来源。
+- 选择会保存在 webview state 中，重启 VS Code 后会恢复上一次选择。
+
 默认行为：
 - 扩展启动后每 1 秒检查 `localhost:<端口>/health` 是否存在 MCP 服务（校验 `serverId`，超时 300–500ms）。
 - 若没有 MCP 服务，则尝试绑定端口并启动 MCP 服务。
