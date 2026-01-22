@@ -405,7 +405,13 @@ class AngelscriptResolveSymbolAtPositionTool implements vscode.LanguageModelTool
         if (typeof uri !== "string" || typeof line !== "number" || typeof character !== "number")
         {
             return new vscode.LanguageModelToolResult([
-                new vscode.LanguageModelTextPart("Invalid input. Provide uri and position { line, character }.")
+                new vscode.LanguageModelTextPart(JSON.stringify({
+                    ok: false,
+                    error: {
+                        code: "InvalidParams",
+                        message: "Invalid params. Provide uri and position { line, character }."
+                    }
+                }, null, 2))
             ]);
         }
 
@@ -432,7 +438,13 @@ class AngelscriptResolveSymbolAtPositionTool implements vscode.LanguageModelTool
             console.error("angelscript_resolveSymbolAtPosition tool failed:", error);
             return new vscode.LanguageModelToolResult([
                 new vscode.LanguageModelTextPart(
-                    "The resolveSymbolAtPosition tool failed to run. Please ensure the language server is running and try again."
+                    JSON.stringify({
+                        ok: false,
+                        error: {
+                            code: "INTERNAL_ERROR",
+                            message: "The resolveSymbolAtPosition tool failed to run. Please ensure the language server is running and try again."
+                        }
+                    }, null, 2)
                 )
             ]);
         }

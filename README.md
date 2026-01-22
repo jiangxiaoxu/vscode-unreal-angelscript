@@ -4,6 +4,93 @@ This branch specifically implements the runtime required to expose Language Mode
 
 - Exposes the angelscript_searchApi tool call so Copilot can query the API.
 - 提供了 angelscript_searchApi 工具调用以便 Copilot 查询 API。
+- Exposes the angelscript_resolveSymbolAtPosition tool call so Copilot can resolve symbols at a document position.
+- 提供了 angelscript_resolveSymbolAtPosition 工具调用以便 Copilot 解析光标位置的符号。
+- Exposes the angelscript_getTypeMembers tool call so Copilot can list members of a type.
+- 提供了 angelscript_getTypeMembers 工具调用以便 Copilot 查询类型成员列表。
+
+### angelscript_resolveSymbolAtPosition
+输入：`uri`（文档 URI）、`position`（`line`/`character`，0-based）、`includeDocumentation`（可选，默认 true）。
+输出为 JSON 字符串：
+- 成功：`{ ok:true, symbol:{ kind, name, signature, definition?, doc? } }`
+- 失败：`{ ok:false, error:{ code, message, retryable?, hint? } }`（工具层错误可能返回 `INTERNAL_ERROR`）
+常见错误 code：`NotFound`、`NotReady`、`InvalidParams`、`Unavailable`、`INTERNAL_ERROR`。
+
+示例（LM tool）：
+```json
+{
+  "uri": "file:///C:/Project/Script/MyActor.as",
+  "position": { "line": 42, "character": 7 },
+  "includeDocumentation": true
+}
+```
+
+示例输出：
+```json
+{
+  "ok": true,
+  "symbol": {
+    "kind": "class",
+    "name": "UObject",
+    "signature": "class UObject",
+    "definition": {
+      "uri": "file:///C:/Project/Script/UObject.as",
+      "startLine": 12,
+      "endLine": 120
+    },
+    "doc": {
+      "format": "markdown",
+      "text": "Base object type."
+    }
+  }
+}
+```
+
+### angelscript_getTypeMembers
+输入：`name`（必填）、`namespace`（可选，根命名空间用空字符串）、`includeInherited`（默认 false）、`includeDocs`（默认 false）、`kinds`（`both`/`method`/`property`）。
+输出为 JSON 字符串：
+- 成功：`{ ok:true, type:{ name, namespace, qualifiedName }, members:[{ kind, name, signature, description, declaredIn, declaredInKind, isInherited, isMixin, isAccessor, accessorKind?, propertyName?, visibility }] }`
+- 失败：`{ ok:false, error:{ code, message } }`（工具层错误可能返回 `UE_UNAVAILABLE`/`INTERNAL_ERROR`）
+常见错误 code：`NotFound`、`InvalidParams`、`UE_UNAVAILABLE`、`INTERNAL_ERROR`。
+
+成员字段包含：`kind`、`name`、`signature`、`description`、`declaredIn`、`declaredInKind`、`isInherited`、`isMixin`、`isAccessor`、`accessorKind?`、`propertyName?`、`visibility`。
+
+示例（LM tool）：
+```json
+{
+  "name": "UObject",
+  "namespace": "",
+  "includeInherited": true,
+  "includeDocs": false,
+  "kinds": "both"
+}
+```
+
+示例输出：
+```json
+{
+  "ok": true,
+  "type": {
+    "name": "UObject",
+    "namespace": "",
+    "qualifiedName": "UObject"
+  },
+  "members": [
+    {
+      "kind": "method",
+      "name": "GetName",
+      "signature": "string GetName() const",
+      "description": "",
+      "declaredIn": "UObject",
+      "declaredInKind": "type",
+      "isInherited": false,
+      "isMixin": false,
+      "isAccessor": false,
+      "visibility": "public"
+    }
+  ]
+}
+```
 
 ## MCP (HTTP) 支持 / MCP (HTTP) support
 为了让 Codex 通过 MCP 调用同样的 `angelscript_searchApi` 能力，本仓库增加了一个内置的

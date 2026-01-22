@@ -2,7 +2,7 @@
     "name": "unreal-angelscript-tool-calling-fork",
     "displayName": "Unreal Angelscript Tool-calling (Fork)",
     "description": "Language Server and Debug Adapter for the UnrealEngine-Angelscript plugin. Based on https://github.com/jiangxiaoxu/vscode-unreal-angelscript-tool-calling (forked from https://github.com/Hazelight/UnrealEngine-Angelscript).",
-    "version": "1.8.8021",
+    "version": "1.8.8022",
     "publisher": "jiangxiaoxu",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -118,7 +118,7 @@
                 ],
                 "toolReferenceName": "angelscript_getTypeMembers",
                 "displayName": "Angelscript Type Members",
-                "modelDescription": "List members for a given Angelscript type, optionally including inherited members. Returns methods, properties, accessors, and mixins with visibility-qualified signatures and plain-text descriptions.",
+                "modelDescription": "List members for a given Angelscript type, optionally including inherited members. Returns methods, properties, accessors, and mixins with visibility-qualified signatures and plain-text descriptions. Returns JSON: { ok:true, type:{ name, namespace, qualifiedName }, members:[{ kind, name, signature, description, declaredIn, declaredInKind, isInherited, isMixin, isAccessor, accessorKind?, propertyName?, visibility }] } or { ok:false, error:{ code, message } }.",
                 "userDescription": "List members for a given Angelscript type, optionally including inherited members.",
                 "canBeReferencedInPrompt": true,
                 "icon": "$(symbol-class)",
@@ -168,7 +168,7 @@
                 ],
                 "toolReferenceName": "angelscript_resolveSymbolAtPosition",
                 "displayName": "Angelscript Resolve Symbol At Position",
-                "modelDescription": "Resolve the symbol at a given document position and return its kind, full signature, definition location, and optional documentation.",
+                "modelDescription": "Resolve the symbol at a given document position and return its kind, full signature, definition location, and optional documentation. Returns JSON: { ok:true, symbol:{ kind, name, signature, definition?, doc? } } or { ok:false, error:{ code, message, retryable?, hint? } }.",
                 "canBeReferencedInPrompt": true,
                 "icon": "$(symbol-method)",
                 "inputSchema": {

@@ -543,7 +543,13 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                     content: [
                         {
                             type: 'text',
-                            text: 'Invalid input. Provide uri and position { line, character }.'
+                            text: JSON.stringify({
+                                ok: false,
+                                error: {
+                                    code: 'InvalidParams',
+                                    message: 'Invalid params. Provide uri and position { line, character }.'
+                                }
+                            }, null, 2)
                         }
                     ]
                 };
@@ -576,7 +582,13 @@ function createMcpServer(client: LanguageClient, startedClient: Promise<void>): 
                     content: [
                         {
                             type: 'text',
-                            text: 'The resolveSymbolAtPosition tool failed to run. Please ensure the language server is running and try again.'
+                            text: JSON.stringify({
+                                ok: false,
+                                error: {
+                                    code: 'INTERNAL_ERROR',
+                                    message: 'The resolveSymbolAtPosition tool failed to run. Please ensure the language server is running and try again.'
+                                }
+                            }, null, 2)
                         }
                     ]
                 };
