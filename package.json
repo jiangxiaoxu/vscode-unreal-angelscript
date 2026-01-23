@@ -2,7 +2,7 @@
     "name": "unreal-angelscript-tool-calling-fork",
     "displayName": "Unreal Angelscript Tool-calling (Fork)",
     "description": "Language Server and Debug Adapter for the UnrealEngine-Angelscript plugin. Based on https://github.com/jiangxiaoxu/vscode-unreal-angelscript-tool-calling (forked from https://github.com/Hazelight/UnrealEngine-Angelscript).",
-    "version": "1.8.8022",
+    "version": "1.8.8023",
     "publisher": "jiangxiaoxu",
     "icon": "resources/angelscript_unreal.png",
     "engines": {
@@ -759,6 +759,10 @@
                 "title": "Go to Symbol"
             },
             {
+                "command": "angelscript.wrapRegion",
+                "title": "Wrap with //#region"
+            },
+            {
                 "command": "angelscript.paren",
                 "title": "Angelscript Parenthesis Completion",
                 "enablement": "false"
@@ -780,6 +784,17 @@
                     "when": "resourceLangId == angelscript",
                     "command": "angelscript.goToSymbol",
                     "group": "navigation"
+                },
+                {
+                    "when": "resourceLangId == angelscript && editorTextFocus",
+                    "command": "angelscript.wrapRegion",
+                    "group": "navigation"
+                }
+            ],
+            "commandPalette": [
+                {
+                    "command": "angelscript.wrapRegion",
+                    "when": "false"
                 }
             ]
         },

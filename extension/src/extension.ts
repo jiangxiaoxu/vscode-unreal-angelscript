@@ -187,6 +187,39 @@ export function activate(context: ExtensionContext)
         });
     context.subscriptions.push(saveAndEditAsset);
 
+    let wrapRegion = vscode.commands.registerCommand('angelscript.wrapRegion', () =>
+    {
+        let activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor != null && activeEditor.document.languageId === 'angelscript')
+        {
+            let document = activeEditor.document;
+            let ranges: vscode.Range[] = [];
+            for (let selection of activeEditor.selections)
+            {
+                let startLine = selection.start.line;
+                let endLine = selection.end.line;
+                if (!selection.isEmpty && selection.end.character === 0)
+                    endLine -= 1;
+                if (endLine < startLine)
+                    endLine = startLine;
+
+                let startPosition = new vscode.Position(startLine, 0);
+                if (selection.isEmpty)
+                {
+                    ranges.push(new vscode.Range(startPosition, startPosition));
+                    continue;
+                }
+
+                let endLineText = document.lineAt(endLine).text;
+                let endPosition = new vscode.Position(endLine, endLineText.length);
+                ranges.push(new vscode.Range(startPosition, endPosition));
+            }
+            let snippet = new vscode.SnippetString("//#region ${1:Label}\n${TM_SELECTED_TEXT}$0\n//#endregion");
+            activeEditor.insertSnippet(snippet, ranges);
+        }
+    });
+    context.subscriptions.push(wrapRegion);
+
     console.log("Done activating angelscript extension");
 
     let apiTree = new ASApiTreeProvider(client);

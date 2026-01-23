@@ -203,6 +203,11 @@ similar to double clicking a C++ class or function in blueprints.
 This uses the standard unreal source navigation system, which is only
 implemented for classes and functions.
 
+### Region Blocks
+The editor context menu includes a "Wrap with //#region" command for angelscript.
+If there is no selection, it inserts a region template and places the cursor on the label.
+Selections are expanded to full lines before wrapping.
+
 ### Add Import To
 The 'Add Import To' (default shortcut: Shift+Alt+I) command from the
 right click menu will try to automatically add an import statement
