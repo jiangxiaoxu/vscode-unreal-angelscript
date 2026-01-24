@@ -22,7 +22,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          releases_json=$(gh release list --limit "$LIST_LIMIT" --json tagName,createdAt --jq '.')
+          releases_json=$(gh api "repos/$GH_REPO/releases?per_page=$LIST_LIMIT" --jq '[.[] | {tagName: .tag_name, createdAt: .created_at, isDraft: .draft}]')
           if [ "$releases_json" = "[]" ]; then
             echo "No releases found."
             exit 0
