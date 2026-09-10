@@ -1,7 +1,7 @@
 import {
     CompletionItem, CompletionItemKind, Position, MarkupContent, MarkupKind,
     SignatureHelp, SignatureInformation, ParameterInformation, Range, TextEdit,
-    CompletionItemLabelDetails, Command, WorkspaceEdit
+    CompletionItemLabelDetails, Command, WorkspaceEdit, InsertTextFormat
 } from 'vscode-languageserver/node';
 import * as typedb from './database';
 import * as scriptfiles from './as_parser';
@@ -1211,6 +1211,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                             label: "UCLASS()",
                             kind: CompletionItemKind.Snippet,
                             sortText: Sort.Keyword_Expected,
+                            insertText: "UCLASS($0)",
+                            insertTextFormat: InsertTextFormat.Snippet,
                     });
 
                     completions.push({
@@ -1230,6 +1232,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                             label: "USTRUCT()",
                             kind: CompletionItemKind.Snippet,
                             sortText: Sort.Keyword_Expected,
+                            insertText: "USTRUCT($0)",
+                            insertTextFormat: InsertTextFormat.Snippet,
                     });
                 }
             }
@@ -1243,6 +1247,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                             label: "UENUM()",
                             kind: CompletionItemKind.Snippet,
                             sortText: Sort.Keyword_Expected,
+                            insertText: "UENUM($0)",
+                            insertTextFormat: InsertTextFormat.Snippet,
                     });
                 }
             }
@@ -1358,6 +1364,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                             label: "UPROPERTY()",
                             kind: CompletionItemKind.Snippet,
                             sortText: Sort.Keyword,
+                            insertText: "UPROPERTY($0)",
+                            insertTextFormat: InsertTextFormat.Snippet,
                     });
 
                     if (context.scope && context.scope.getDatabaseType() && context.scope.getDatabaseType().inheritsFrom("AActor"))
@@ -1410,6 +1418,8 @@ function AddCompletionsFromKeywords(context : CompletionContext, completions : A
                                 label: "UFUNCTION()",
                                 kind: CompletionItemKind.Snippet,
                                 sortText: Sort.Keyword,
+                                insertText: "UFUNCTION($0)",
+                                insertTextFormat: InsertTextFormat.Snippet,
                         });
 
                         completions.push({
