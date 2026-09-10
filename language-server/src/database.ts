@@ -1,10 +1,12 @@
 import {
     DebugDatabaseAccessChunk,
+    BlueprintEventKind,
     FunctionAccess,
     PropertyAccess,
     unknownFunctionAccess,
     unknownPropertyAccess,
 } from './accessContract';
+export type { BlueprintEventKind } from './accessContract';
 
 export enum DBAllowSymbol
 {
@@ -243,6 +245,7 @@ export class DBMethod implements DBSymbol
     isPrivate : boolean = false;
     isConstructor : boolean = false;
     isBlueprintEvent : boolean = false;
+    blueprintEventKind : BlueprintEventKind | null = null;
     isCallable : boolean = true;
     isBlueprintOverride : boolean = false;
     isConst : boolean = false;
@@ -296,6 +299,7 @@ export class DBMethod implements DBSymbol
         inst.isPrivate = this.isPrivate;
         inst.isConstructor = this.isConstructor;
         inst.isBlueprintEvent = this.isBlueprintEvent;
+        inst.blueprintEventKind = this.blueprintEventKind;
         inst.isCallable = this.isCallable;
         inst.isBlueprintOverride = this.isBlueprintOverride;
         inst.isConst = this.isConst;
@@ -356,6 +360,11 @@ export class DBMethod implements DBSymbol
             this.isBlueprintEvent = input['event'];
         else
             this.isBlueprintEvent = false;
+
+        if (input['blueprintEventKind'] == 'implementable' || input['blueprintEventKind'] == 'native')
+            this.blueprintEventKind = input['blueprintEventKind'];
+        else
+            this.blueprintEventKind = null;
 
         if ('isProperty' in input)
             this.isProperty = input['isProperty'];
@@ -2630,7 +2639,13 @@ function sidecarOwnerSymbols(
     let type = GetTypeByName(ownerName);
     if (!type)
         return [];
-    return type.findSymbols(symbolName);
+    // Access identities name the declaring owner.  `findSymbols` walks the
+    // inheritance chain, which makes an override that shares a base method
+    // name ambiguous and prevents the direct symbol from receiving its fact.
+    let direct = type.symbols.get(symbolName);
+    if (direct instanceof Array)
+        return direct;
+    return direct ? [direct] : [];
 }
 
 function normalizeSidecarArgumentType(value: string) : string
@@ -2681,6 +2696,14 @@ function sidecarMethodMatches(
     return true;
 }
 
+/** Return the native Blueprint event kind exposed by the access sidecar. */
+export function GetBlueprintEventKind(method: DBMethod) : BlueprintEventKind | undefined
+{
+    if (method.containingType == null || method.declaredModule != null || !method.isBlueprintEvent)
+        return undefined;
+    return method.blueprintEventKind ?? undefined;
+}
+
 /** Merge the optional access sidecar onto legacy native DB symbols. */
 export function ApplyDebugDatabaseAccess(chunks: readonly DebugDatabaseAccessChunk[]) : void
 {
@@ -2706,7 +2729,14 @@ export function ApplyDebugDatabaseAccess(chunks: readonly DebugDatabaseAccessChu
                     method.kind,
                 ));
             if (candidates.length == 1)
+            {
                 candidates[0].access = method.access;
+                if (method.blueprintEventKind !== undefined)
+                {
+                    candidates[0].isBlueprintEvent = true;
+                    candidates[0].blueprintEventKind = method.blueprintEventKind;
+                }
+            }
         }
     }
 

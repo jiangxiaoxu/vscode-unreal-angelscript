@@ -44,6 +44,7 @@ type CollectedTypeMember = {
     isCallable?: boolean;
     access?: PropertyAccess | FunctionAccess;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     symbolId?: string;
     requiredArgumentCount?: number;
 };
@@ -869,6 +870,7 @@ function collectTypeMemberRecords(
                         ? (accessorKind ? accessorPropertyAccess(symbol.access, accessorKind) : unknownPropertyAccess())
                         : symbol.access ?? unknownFunctionAccess(),
                     ...(isNativeBlueprintOverrideTarget(symbol) ? { canBlueprintOverride: true } : {}),
+                    ...(typedb.GetBlueprintEventKind(symbol) !== undefined ? { blueprintEventKind: typedb.GetBlueprintEventKind(symbol) } : {}),
                 });
             }
             else if (symbol instanceof typedb.DBProperty)
@@ -1009,6 +1011,7 @@ export type ApiSymbolMember = {
     access?: PropertyAccess | FunctionAccess;
     isAccessor?: true;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     symbolId?: string;
     symbolIdPrefix?: string;
     args?: ApiConstructorArgument[];
@@ -1185,6 +1188,7 @@ function projectCollectedMember(member: CollectedTypeMember) : ApiSymbolMember
         ...(member.access !== undefined ? { access: member.access } : {}),
         ...(member.isAccessor ? { isAccessor: true } : {}),
         ...(member.canBlueprintOverride ? { canBlueprintOverride: true } : {}),
+        ...(member.blueprintEventKind !== undefined ? { blueprintEventKind: member.blueprintEventKind } : {}),
         ...(member.symbolId ? { symbolId: member.symbolId } : {}),
         ...(symbolIdPrefix ? { symbolIdPrefix } : {}),
         ...(member.args ? { args: member.args } : {}),
@@ -1333,7 +1337,8 @@ function collectNamespaceMembers(
                     ? (accessor.accessorKind ? accessorPropertyAccess(symbol.access, accessor.accessorKind) : unknownPropertyAccess())
                     : symbol.access ?? unknownFunctionAccess(),
                 ...(isAccessor ? { isAccessor: true } : {}),
-                ...(isNativeBlueprintOverrideTarget(symbol) ? { canBlueprintOverride: true } : {})
+                ...(isNativeBlueprintOverrideTarget(symbol) ? { canBlueprintOverride: true } : {}),
+                ...(typedb.GetBlueprintEventKind(symbol) !== undefined ? { blueprintEventKind: typedb.GetBlueprintEventKind(symbol) } : {})
             });
             return;
         }

@@ -51,7 +51,7 @@ function method(
     name: string,
     declaredModule: string | null,
     args: Array<{ type: string; name: string; defaultValue?: string }> = [],
-    options: { returnType?: string; callable?: boolean; private?: boolean; protected?: boolean; property?: boolean; mixin?: boolean; blueprintEvent?: boolean } = {}
+    options: { returnType?: string; callable?: boolean; private?: boolean; protected?: boolean; property?: boolean; mixin?: boolean; blueprintEvent?: boolean; blueprintEventKind?: 'implementable' | 'native' } = {}
 ): DBMethod
 {
     const value = new DBMethod();
@@ -65,6 +65,7 @@ function method(
     value.isProperty = options.property === true;
     value.isMixin = options.mixin === true;
     value.isBlueprintEvent = options.blueprintEvent === true;
+    value.blueprintEventKind = options.blueprintEventKind ?? null;
     value.documentation = `${name} docs.`;
     return value;
 }
@@ -129,7 +130,11 @@ function setup(): void
     shadow.addSymbol(method('AMixinNamespace', 'Game.Core'));
 
     const base = type(core, 'UBase', {
-        methods: [method('Tick', null, [], { blueprintEvent: true })],
+        methods: [
+            method('Tick', null, [], { blueprintEvent: true, blueprintEventKind: 'implementable' }),
+            method('NativeEvent', null, [], { blueprintEvent: true, blueprintEventKind: 'native' }),
+            method('UnknownEvent', null, [], { blueprintEvent: true }),
+        ],
         properties: [property('BaseValue', null)],
     });
     void base;
@@ -214,7 +219,15 @@ test('native Blueprint events project canBlueprintOverride across API read surfa
     const legacySearch = GetAPISearch({ query: 'Tick', kinds: ['method'], source: 'native', limit: 10 });
     const legacyTick = legacySearch.matches.find((match) => match.qualifiedName == 'Core::UBase.Tick');
     assert.equal(legacyTick?.canBlueprintOverride, true);
+    assert.equal(legacyTick?.blueprintEventKind, 'implementable');
     assert.equal(Object.prototype.hasOwnProperty.call(legacyTick, 'canBlueprintOverride'), true);
+    const nativeEvent = GetAPISearch({ query: 'NativeEvent', kinds: ['method'], source: 'native', limit: 10 })
+        .matches.find((match) => match.qualifiedName == 'Core::UBase.NativeEvent');
+    assert.equal(nativeEvent?.blueprintEventKind, 'native');
+    const unknownEvent = GetAPISearch({ query: 'UnknownEvent', kinds: ['method'], source: 'native', limit: 10 })
+        .matches.find((match) => match.qualifiedName == 'Core::UBase.UnknownEvent');
+    assert.equal(unknownEvent?.blueprintEventKind, undefined);
+    assert.equal(Object.prototype.hasOwnProperty.call(unknownEvent, 'blueprintEventKind'), false);
     const legacyScriptOverride = GetAPISearch({ query: 'ScriptOverride', kinds: ['method'], source: 'script', limit: 10 })
         .matches.find((match) => match.qualifiedName == 'Core::UDerived.ScriptOverride');
     assert.ok(legacyScriptOverride);
@@ -223,22 +236,32 @@ test('native Blueprint events project canBlueprintOverride across API read surfa
 
     const query = GetAPIQuery({ query: 'Tick', kinds: ['method'], source: 'native', limit: 10 });
     assert.equal(query.data.matches.find((match) => match.qualifiedName == 'Core::UBase.Tick')?.canBlueprintOverride, true);
+    assert.equal(query.data.matches.find((match) => match.qualifiedName == 'Core::UBase.Tick')?.blueprintEventKind, 'implementable');
 
     const exact = GetAPIExactSymbols({ name: 'Core::UBase.Tick', kind: 'method', source: 'native' });
     assert.equal(exact.ok, true, JSON.stringify(exact));
     if (exact.ok)
+    {
         assert.equal(exact.data.symbols.find((match) => match.qualifiedName == 'Core::UBase.Tick')?.canBlueprintOverride, true);
+        assert.equal(exact.data.symbols.find((match) => match.qualifiedName == 'Core::UBase.Tick')?.blueprintEventKind, 'implementable');
+    }
 
     const members = GetAPISymbolMembers({ name: 'Core::UBase', ownerKind: 'type', members: ['callable'], limit: 10 });
     assert.equal(members.ok, true, JSON.stringify(members));
     if (members.ok)
+    {
         assert.equal(members.data.groups[0]?.members.items.find((member) => member.qualifiedName == 'Core::UBase.Tick')?.canBlueprintOverride, true);
+        assert.equal(members.data.groups[0]?.members.items.find((member) => member.qualifiedName == 'Core::UBase.Tick')?.blueprintEventKind, 'implementable');
+    }
 
     const materializedIndex = ExportAPIQueryMaterializedIndex();
     assert.equal(materializedIndex.entries.find((entry) => entry.qualifiedName == 'Core::UBase.Tick')?.canBlueprintOverride, true);
+    assert.equal(materializedIndex.entries.find((entry) => entry.qualifiedName == 'Core::UBase.Tick')?.blueprintEventKind, 'implementable');
     const materializedMembers = ExportAPIMaterializedMemberOwners();
     assert.equal(materializedMembers.find((owner) => owner.ownerQualifiedName == 'Core::UBase')?.directMembers
         .find((member) => member.qualifiedName == 'Core::UBase.Tick')?.canBlueprintOverride, true);
+    assert.equal(materializedMembers.find((owner) => owner.ownerQualifiedName == 'Core::UBase')?.directMembers
+        .find((member) => member.qualifiedName == 'Core::UBase.Tick')?.blueprintEventKind, 'implementable');
     const materializedScriptOverride = materializedMembers.find((owner) => owner.ownerQualifiedName == 'Core::UDerived')?.directMembers
         .find((member) => member.qualifiedName == 'Core::UDerived.ScriptOverride');
     assert.ok(materializedScriptOverride);

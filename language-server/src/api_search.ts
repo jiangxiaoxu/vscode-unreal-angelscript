@@ -64,6 +64,7 @@ export type GetAPISearchMatch = {
     access?: PropertyAccess | FunctionAccess;
     isMixin?: boolean;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     scopeRelationship?: ApiSearchScopeRelationship;
     scopeDistance?: number;
     matchedBy?: ApiSearchMatchedBy;
@@ -156,6 +157,7 @@ type SearchIndexEntry = {
     kind: ApiSearchKind;
     isCallable: boolean;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     signature: string;
     summary?: string;
     documentation?: string;
@@ -734,6 +736,7 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
     let declaringTypeQualifiedName: string | undefined = undefined;
     let mixinTargetQualifiedName: string | undefined = undefined;
     let aliasQualifiedNames: string[] | undefined = undefined;
+    let blueprintEventKind = typedb.GetBlueprintEventKind(method);
 
     if (method.containingType)
     {
@@ -781,6 +784,7 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
         isCallable,
         access: method.access ?? unknownFunctionAccess(),
         ...(isNativeBlueprintOverrideTarget(method) ? { canBlueprintOverride: true } : {}),
+        ...(blueprintEventKind !== undefined ? { blueprintEventKind } : {}),
         signature: buildMethodSignature(method),
         summary: extractSummary(documentation),
         documentation,
@@ -854,6 +858,7 @@ function createSearchEntry(input: {
     isCallable: boolean;
     access?: PropertyAccess | FunctionAccess;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     signature: string;
     summary?: string;
     documentation?: string;
@@ -879,6 +884,7 @@ function createSearchEntry(input: {
         isCallable: input.isCallable,
         access: input.access,
         canBlueprintOverride: input.canBlueprintOverride,
+        blueprintEventKind: input.blueprintEventKind,
         signature: input.signature,
         summary: input.summary,
         documentation: input.documentation,
@@ -2141,6 +2147,8 @@ function buildMatch(candidate: SearchCandidate, includeDocs: boolean) : GetAPISe
         match.access = candidate.entry.access;
     if (candidate.entry.canBlueprintOverride)
         match.canBlueprintOverride = true;
+    if (candidate.entry.blueprintEventKind !== undefined)
+        match.blueprintEventKind = candidate.entry.blueprintEventKind;
     if (candidate.entry.isMixin)
         match.isMixin = true;
     if (candidate.scopeRelationship)

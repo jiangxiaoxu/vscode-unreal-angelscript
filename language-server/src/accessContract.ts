@@ -7,6 +7,8 @@
 
 export type AccessState = 'allowed' | 'denied' | 'unknown';
 
+export type BlueprintEventKind = 'implementable' | 'native';
+
 export type AccessRestrictionCode =
     | 'Editable'
     | 'ConstProperty'
@@ -70,6 +72,7 @@ export type DebugDatabaseAccessChunk = {
         owner: string;
         kind?: 'method' | 'function' | 'constructor';
         name: string;
+        blueprintEventKind?: BlueprintEventKind;
         signature?: string;
         args: Array<{ name?: string; type: string; default?: string }>;
         return?: string;
@@ -104,6 +107,11 @@ export function normalizeDebugDatabaseAccessChunk(raw: unknown) : DebugDatabaseA
         result.methods = raw.methods.map((entry) => {
             if (!isRecord(entry) || typeof entry.owner != 'string' || typeof entry.name != 'string'
                 || (entry.kind !== undefined && entry.kind != 'method' && entry.kind != 'function' && entry.kind != 'constructor')
+                || (entry.blueprintEventKind !== undefined
+                    && entry.kind != 'method')
+                || (entry.blueprintEventKind !== undefined
+                    && entry.blueprintEventKind != 'implementable'
+                    && entry.blueprintEventKind != 'native')
                 || !Array.isArray(entry.args)
                 || entry.args.some((arg) => !isRecord(arg) || typeof arg.type != 'string'))
                 throw new Error('DebugDatabaseAccess method identity is invalid.');
@@ -111,10 +119,12 @@ export function normalizeDebugDatabaseAccessChunk(raw: unknown) : DebugDatabaseA
             if (!access)
                 throw new Error(`DebugDatabaseAccess method ${entry.owner}.${entry.name} access is invalid.`);
             let kind = entry.kind as 'method' | 'function' | 'constructor' | undefined;
+            let blueprintEventKind = entry.blueprintEventKind as BlueprintEventKind | undefined;
             return {
                 owner: entry.owner,
                 ...(kind !== undefined ? { kind } : {}),
                 name: entry.name,
+                ...(blueprintEventKind !== undefined ? { blueprintEventKind } : {}),
                 ...(typeof entry.signature == 'string' ? { signature: entry.signature } : {}),
                 args: entry.args.map((arg) => ({
                     ...(typeof arg.name == 'string' ? { name: arg.name } : {}),

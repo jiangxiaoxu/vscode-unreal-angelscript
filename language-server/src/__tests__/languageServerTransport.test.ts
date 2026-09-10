@@ -808,16 +808,26 @@ test('one verified socket accepts a delayed optional sidecar and consecutive nat
             throw new Error('Timed out waiting for a settled native round.');
         };
 
+        let waitForTokenRefreshCount = async (expected: number) => {
+            for (let attempt = 0; attempt < 100; ++attempt)
+            {
+                let count = client.notifications.filter((message) => message.method == 'workspace/semanticTokens/refresh').length;
+                if (count >= expected)
+                    return count;
+                await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            throw new Error(`Timed out waiting for ${expected} semantic token refresh notifications.`);
+        };
+
         let firstRevision = await waitForSettledRevision();
         let firstDiagnostics = await client.request('workspace/diagnostic', { previousResultIds: [] });
         assert.doesNotMatch(JSON.stringify(firstDiagnostics.result), /URoundChild.*naming convention/i);
-        let tokenRefreshesAfterFirst = client.notifications.filter((message) => message.method == 'workspace/semanticTokens/refresh').length;
 
         let secondRevision = await waitForSettledRevision(firstRevision);
         let secondDiagnostics = await client.request('workspace/diagnostic', { previousResultIds: [] });
         assert.match(JSON.stringify(secondDiagnostics.result), /URoundChild.*naming convention/i);
-        let tokenRefreshesAfterSecond = client.notifications.filter((message) => message.method == 'workspace/semanticTokens/refresh').length;
-        assert.equal(tokenRefreshesAfterSecond, tokenRefreshesAfterFirst + 1);
+        let tokenRefreshesAfterSecond = await waitForTokenRefreshCount(2);
+        assert.equal(tokenRefreshesAfterSecond, 2);
     }
     finally
     {

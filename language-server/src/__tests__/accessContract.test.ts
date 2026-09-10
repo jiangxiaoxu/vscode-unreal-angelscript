@@ -26,8 +26,10 @@ function sidecarChunk() : Record<string, unknown>
         }],
         methods: [{
             owner: 'AActor',
+            kind: 'method',
             name: 'ReceiveActorBeginOverlap',
             args: [],
+            blueprintEventKind: 'implementable',
             access: { call: { state: 'deny' } },
         }],
     };
@@ -43,6 +45,7 @@ test('access sidecar normalizes direction states and callable restrictions', () 
     assert.deepEqual(normalizeFunctionAccess(chunk.methods![0].access), {
         call: { state: 'denied' },
     });
+    assert.equal(chunk.methods![0].blueprintEventKind, 'implementable');
 });
 
 test('access sidecar keeps capability metadata out of the payload and validates identities', () =>
@@ -77,6 +80,16 @@ test('custom access normalization rejects malformed states and unknown restricti
             access: { call: { state: 'allow', restrictions: [{ code: 'Unknown' }] } },
         }],
     }), /restriction code/i);
+    assert.throws(() => normalizeDebugDatabaseAccessChunk({
+        methods: [{
+            owner: '__',
+            kind: 'function',
+            name: 'BrokenEventKind',
+            args: [],
+            blueprintEventKind: 'native',
+            access: { call: { state: 'allow' } },
+        }],
+    }), /method identity/i);
     assert.throws(() => normalizeDebugDatabaseAccessChunk({
         properties: [{
             owner: 'AActor',
@@ -119,6 +132,38 @@ test('legacy native records stay unchanged and sidecar access joins by owner and
     assert.ok(type);
     assert.equal(type.getProperty('InitialLifeSpan', false)?.access?.write.normal, 'denied');
     assert.deepEqual(type.getMethod('Tick', false)?.access?.call.restrictions, [{ code: 'UnsafeDuringActorConstruction' }]);
+});
+
+test('sidecar method identity uses direct owner symbols when a base has the same method', () =>
+{
+    database.ResetDatabaseForTests();
+    hydrateTypeDatabaseGeneration([{
+        UBase: {
+            properties: {},
+            methods: [{ name: 'AcquireEditorElementHandle', return: 'void', args: [] }],
+        },
+        AActor: {
+            supertype: 'UBase',
+            properties: {},
+            methods: [{ name: 'AcquireEditorElementHandle', return: 'void', args: [] }],
+        },
+    }], false, [normalizeDebugDatabaseAccessChunk({
+        methods: [{
+            owner: 'AActor',
+            kind: 'method',
+            name: 'AcquireEditorElementHandle',
+            args: [],
+            return: 'void',
+            blueprintEventKind: 'implementable',
+            access: { call: { state: 'allow' } },
+        }],
+    })]);
+    let actorMethod = database.GetTypeByName('AActor')?.getMethod('AcquireEditorElementHandle', false);
+    let baseMethod = database.GetTypeByName('UBase')?.getMethod('AcquireEditorElementHandle', false);
+    assert.equal(actorMethod?.access?.call.state, 'allowed');
+    assert.equal(actorMethod?.blueprintEventKind, 'implementable');
+    assert.equal(baseMethod?.access?.call.state, 'unknown');
+    assert.equal(baseMethod?.blueprintEventKind, null);
 });
 
 test('sidecar merge preserves qualified overload identity', () =>

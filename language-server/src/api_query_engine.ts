@@ -81,6 +81,7 @@ export type GetAPISearchMatch = {
     isAccessor?: true;
     isMixin?: boolean;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     scopeRelationship?: ApiSearchScopeRelationship;
     scopeDistance?: number;
     matchedBy?: ApiSearchMatchedBy;
@@ -204,6 +205,7 @@ type SearchIndexEntry = {
     isCallable: boolean;
     isAccessor: boolean;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     signature: string;
     summary?: string;
     documentation?: string;
@@ -239,6 +241,7 @@ export type ApiQueryMaterializedEntry = {
     isCallable: boolean;
     isAccessor?: true;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     signature: string;
     summary?: string;
     documentation?: string;
@@ -1497,6 +1500,7 @@ export function ExportAPIQueryMaterializedIndex() : ApiQueryMaterializedIndex
         isCallable: entry.isCallable,
         ...(entry.isAccessor ? { isAccessor: true } : {}),
         ...(entry.canBlueprintOverride ? { canBlueprintOverride: true } : {}),
+        ...(entry.blueprintEventKind ? { blueprintEventKind: entry.blueprintEventKind } : {}),
         signature: entry.signature,
         ...(entry.summary ? { summary: entry.summary } : {}),
         ...(entry.documentation ? { documentation: entry.documentation } : {}),
@@ -1723,6 +1727,7 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
     let declaringTypeQualifiedName: string | undefined = undefined;
     let mixinTargetQualifiedName: string | undefined = undefined;
     let aliasQualifiedNames: string[] | undefined = undefined;
+    let blueprintEventKind = typedb.GetBlueprintEventKind(method);
 
     if (method.containingType)
     {
@@ -1774,6 +1779,7 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
             ? (accessor ? accessorPropertyAccess(method.access, accessor.kind) : unknownPropertyAccess())
             : method.access ?? unknownFunctionAccess(),
         ...(isNativeBlueprintOverrideTarget(method) ? { canBlueprintOverride: true } : {}),
+        ...(blueprintEventKind !== undefined ? { blueprintEventKind } : {}),
         signature: buildMethodSignature(method),
         summary: extractSummary(documentation),
         documentation,
@@ -1889,6 +1895,7 @@ function createSearchEntry(input: {
     isAccessor?: boolean;
     access?: PropertyAccess | FunctionAccess;
     canBlueprintOverride?: true;
+    blueprintEventKind?: typedb.BlueprintEventKind;
     signature: string;
     summary?: string;
     documentation?: string;
@@ -1921,6 +1928,7 @@ function createSearchEntry(input: {
         isAccessor: input.isAccessor === true,
         access: input.access,
         canBlueprintOverride: input.canBlueprintOverride,
+        blueprintEventKind: input.blueprintEventKind,
         signature: input.signature,
         summary: input.summary,
         documentation: input.documentation,
@@ -3269,6 +3277,8 @@ function buildMatch(candidate: SearchCandidate, includeDocs: boolean) : GetAPISe
         match.isAccessor = true;
     if (candidate.entry.canBlueprintOverride)
         match.canBlueprintOverride = true;
+    if (candidate.entry.blueprintEventKind !== undefined)
+        match.blueprintEventKind = candidate.entry.blueprintEventKind;
     if (candidate.entry.isMixin)
         match.isMixin = true;
     if (candidate.scopeRelationship)
