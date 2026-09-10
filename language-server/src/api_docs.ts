@@ -2,6 +2,12 @@ import * as scriptfiles from './as_parser';
 import * as typedb from './database';
 import * as documentation from './documentation';
 import {
+    accessorPropertyAccess,
+    unknownFunctionAccess,
+    unknownPropertyAccess,
+} from './accessContract';
+import type { FunctionAccess, PropertyAccess } from './accessContract';
+import {
     GetAPIExactSymbols,
     GetConstructorSymbolIdPrefix,
     ProjectConstructor,
@@ -36,6 +42,7 @@ type CollectedTypeMember = {
     args?: ApiConstructorArgument[];
     source: ApiDeclaredSource;
     isCallable?: boolean;
+    access?: PropertyAccess | FunctionAccess;
     canBlueprintOverride?: true;
     symbolId?: string;
     requiredArgumentCount?: number;
@@ -858,6 +865,9 @@ function collectTypeMemberRecords(
                     visibility: visibility,
                     source: sourceOfDeclaredModule(symbol.declaredModule),
                     isCallable: symbol.isCallable !== false,
+                    access: isAccessor
+                        ? (accessorKind ? accessorPropertyAccess(symbol.access, accessorKind) : unknownPropertyAccess())
+                        : symbol.access ?? unknownFunctionAccess(),
                     ...(isNativeBlueprintOverrideTarget(symbol) ? { canBlueprintOverride: true } : {}),
                 });
             }
@@ -895,6 +905,7 @@ function collectTypeMemberRecords(
                     isAccessor: false,
                     visibility: visibility,
                     source: memberSource,
+                    access: symbol.access ?? unknownPropertyAccess(),
                 });
             }
         }, false);
@@ -950,6 +961,9 @@ function collectTypeMemberRecords(
                 visibility: visibility,
                 source: sourceOfDeclaredModule(symbol.declaredModule),
                 isCallable: symbol.isCallable !== false,
+                access: isAccessor
+                    ? (accessor.accessorKind ? accessorPropertyAccess(symbol.access, accessor.accessorKind) : unknownPropertyAccess())
+                    : symbol.access ?? unknownFunctionAccess(),
             });
         });
 
@@ -992,6 +1006,7 @@ export type ApiSymbolMember = {
     inheritedFrom?: string;
     isMixin?: boolean;
     isCallable?: boolean;
+    access?: PropertyAccess | FunctionAccess;
     isAccessor?: true;
     canBlueprintOverride?: true;
     symbolId?: string;
@@ -1167,6 +1182,7 @@ function projectCollectedMember(member: CollectedTypeMember) : ApiSymbolMember
         ...(member.isInherited ? { inheritedFrom: member.declaredIn } : {}),
         ...(member.isMixin ? { isMixin: true } : {}),
         ...(member.isCallable !== undefined ? { isCallable: member.isCallable } : {}),
+        ...(member.access !== undefined ? { access: member.access } : {}),
         ...(member.isAccessor ? { isAccessor: true } : {}),
         ...(member.canBlueprintOverride ? { canBlueprintOverride: true } : {}),
         ...(member.symbolId ? { symbolId: member.symbolId } : {}),
@@ -1313,6 +1329,9 @@ function collectNamespaceMembers(
                 ...(includeDocs && normalizeMemberDocumentation(symbol.findAvailableDocumentation()) ? { documentation: normalizeMemberDocumentation(symbol.findAvailableDocumentation()) } : {}),
                 ...(symbol.isMixin ? { isMixin: true } : {}),
                 isCallable,
+                access: isAccessor
+                    ? (accessor.accessorKind ? accessorPropertyAccess(symbol.access, accessor.accessorKind) : unknownPropertyAccess())
+                    : symbol.access ?? unknownFunctionAccess(),
                 ...(isAccessor ? { isAccessor: true } : {}),
                 ...(isNativeBlueprintOverrideTarget(symbol) ? { canBlueprintOverride: true } : {})
             });
@@ -1335,7 +1354,9 @@ function collectNamespaceMembers(
                 source: symbol.declaredModule ? 'script' : 'native',
                 visibility,
                 ...(includeDocs && normalizeMemberDocumentation(symbol.documentation) ? { documentation: normalizeMemberDocumentation(symbol.documentation) } : {}),
-                isCallable: false
+                isCallable: false,
+                // Global variables keep their existing public contract; the
+                // access v1 payload is limited to property/method/function.
             });
             return;
         }

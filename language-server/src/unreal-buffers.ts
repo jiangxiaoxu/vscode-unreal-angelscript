@@ -53,6 +53,31 @@ export enum MessageType
 
     SetDataBreakpoints,
     ClearDataBreakpoints,
+
+    // Keep the Engine enum tail aligned with the native debug protocol. These
+    // entries are intentionally absent from the older extension client.
+    StopPIE,
+    RequestDiagnosticsSnapshot,
+    DiagnosticsSnapshotBegin,
+    DiagnosticsSnapshotFinished,
+
+    DebugDatabaseAccessBegin = 54,
+    DebugDatabaseAccess,
+    DebugDatabaseAccessFinished,
+}
+
+export type DebugDatabaseAccessFrame = {
+    payload?: string;
+};
+
+/** Byte-identical legacy request: the inbound Engine packet length is one
+ * byte for the message opcode and carries no request body. */
+export function buildLegacyRequestDebugDatabase() : Buffer
+{
+    let msg = Buffer.alloc(5);
+    msg.writeUInt32LE(1, 0);
+    msg.writeUInt8(MessageType.RequestDebugDatabase, 4);
+    return msg;
 }
 
 export class Message
@@ -62,6 +87,7 @@ export class Message
     buffer : Buffer;
     size : number;
     remainingSize : number;
+    private readonly payloadOffset : number;
 
     constructor(type : number, offset : number, size : number, buffer : Buffer)
     {
@@ -69,12 +95,15 @@ export class Message
         this.offset = offset;
         this.buffer = buffer;
         this.size = size;
+        this.payloadOffset = offset;
+        this.remainingSize = size;
     }
 
     readInt() : number
     {
         let value = this.buffer.readIntLE(this.offset, 4);
         this.offset += 4;
+        this.remainingSize = this.size - (this.offset - this.payloadOffset);
         return value;
     }
 
@@ -82,6 +111,33 @@ export class Message
     {
         let value = this.buffer.readInt8(this.offset);
         this.offset += 1;
+        this.remainingSize = this.size - (this.offset - this.payloadOffset);
+        return value;
+    }
+
+    readUInt16() : number
+    {
+        let value = this.buffer.readUInt16LE(this.offset);
+        this.offset += 2;
+        this.remainingSize = this.size - (this.offset - this.payloadOffset);
+        return value;
+    }
+
+    readUInt32() : number
+    {
+        let value = this.buffer.readUInt32LE(this.offset);
+        this.offset += 4;
+        this.remainingSize = this.size - (this.offset - this.payloadOffset);
+        return value;
+    }
+
+    readBytes(count : number) : Buffer
+    {
+        if (!Number.isInteger(count) || count < 0 || count > this.remainingSize)
+            throw new Error(`Unreal message payload is truncated (requested ${count}, remaining ${this.remainingSize}).`);
+        let value = this.buffer.subarray(this.offset, this.offset + count);
+        this.offset += count;
+        this.remainingSize = this.size - (this.offset - this.payloadOffset);
         return value;
     }
 
@@ -99,12 +155,17 @@ export class Message
             num = -num;
         }
 
+        let byteLength = num * (ucs2 ? 2 : 1);
+        if (!Number.isSafeInteger(byteLength) || byteLength < 0 || byteLength > this.remainingSize)
+            throw new Error(`Unreal message string is truncated (requested ${byteLength}, remaining ${this.remainingSize}).`);
+
         if(ucs2)
         {
             let str = this.buffer.toString("utf16le", this.offset, this.offset + num * 2);
             this.offset += num * 2;
             if(str[str.length - 1] == '\0')
                 str = str.substr(0, str.length - 1);
+            this.remainingSize = this.size - (this.offset - this.payloadOffset);
             return str;
         }
         else
@@ -113,9 +174,27 @@ export class Message
             this.offset += num;
             if(str[str.length - 1] == '\0')
                 str = str.substr(0, str.length - 1);
+            this.remainingSize = this.size - (this.offset - this.payloadOffset);
             return str;
         }
     }
+}
+
+/** Parse the tokenless JSON payload on an optional access frame. */
+export function readDebugDatabaseAccessFrame(message : Message) : DebugDatabaseAccessFrame
+{
+    let payload = message.readString();
+    if (message.remainingSize != 0)
+        throw new Error('DebugDatabase access frame contains an unsupported trailing payload.');
+    return { payload };
+}
+
+/** Parse the empty optional access Finished frame. */
+export function readDebugDatabaseAccessFinishedFrame(message : Message) : DebugDatabaseAccessFrame
+{
+    if (message.remainingSize != 0)
+        throw new Error('DebugDatabase access Finished frame contains an unsupported payload.');
+    return {};
 }
 
 export class UnrealMessageDecoder

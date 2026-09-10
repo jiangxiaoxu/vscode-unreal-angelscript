@@ -301,6 +301,9 @@ export function createLanguageServerAutomationRuntime(
         completeNativeRefresh,
         cancelNativeDiagnostics,
         resumeNativeDiagnostics,
+        // Access enrichment is orthogonal to the base semantic generation:
+        // VS Code can become fully ready after BaseFinished while the
+        // project-daemon access gate continues to wait for the sidecar.
         get nativeRefreshPending() { return nativeCandidateGeneration != null || nativeDiagnosticsGeneration != null; },
         shutdown,
         get options() { return options; },

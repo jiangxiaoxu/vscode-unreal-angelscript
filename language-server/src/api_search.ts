@@ -1,4 +1,9 @@
 import * as typedb from './database';
+import {
+    unknownFunctionAccess,
+    unknownPropertyAccess,
+} from './accessContract';
+import type { FunctionAccess, PropertyAccess } from './accessContract';
 
 export type ApiSearchMode = 'smart' | 'regex';
 export type ApiSearchSource = 'native' | 'script' | 'both';
@@ -56,6 +61,7 @@ export type GetAPISearchMatch = {
     documentation?: string;
     containerQualifiedName?: string;
     source: ApiSearchMatchSource;
+    access?: PropertyAccess | FunctionAccess;
     isMixin?: boolean;
     canBlueprintOverride?: true;
     scopeRelationship?: ApiSearchScopeRelationship;
@@ -155,6 +161,7 @@ type SearchIndexEntry = {
     documentation?: string;
     containerQualifiedName?: string;
     source: ApiSearchMatchSource;
+    access?: PropertyAccess | FunctionAccess;
     filterSource: ApiSearchSource;
     detailsData?: unknown;
     shortName: string;
@@ -772,6 +779,7 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
         qualifiedName,
         kind: method.containingType ? 'method' : 'function',
         isCallable,
+        access: method.access ?? unknownFunctionAccess(),
         ...(isNativeBlueprintOverrideTarget(method) ? { canBlueprintOverride: true } : {}),
         signature: buildMethodSignature(method),
         summary: extractSummary(documentation),
@@ -801,6 +809,7 @@ function createTypePropertyEntry(property: typedb.DBProperty) : SearchIndexEntry
         qualifiedName: `${qualifiedContainer}.${property.name}`,
         kind: 'property',
         isCallable: false,
+        access: property.access ?? unknownPropertyAccess(),
         signature: property.format(`${qualifiedContainer}.`),
         summary: extractSummary(documentation),
         documentation,
@@ -843,6 +852,7 @@ function createSearchEntry(input: {
     qualifiedName: string;
     kind: ApiSearchKind;
     isCallable: boolean;
+    access?: PropertyAccess | FunctionAccess;
     canBlueprintOverride?: true;
     signature: string;
     summary?: string;
@@ -867,6 +877,7 @@ function createSearchEntry(input: {
         qualifiedName: input.qualifiedName,
         kind: input.kind,
         isCallable: input.isCallable,
+        access: input.access,
         canBlueprintOverride: input.canBlueprintOverride,
         signature: input.signature,
         summary: input.summary,
@@ -2126,6 +2137,8 @@ function buildMatch(candidate: SearchCandidate, includeDocs: boolean) : GetAPISe
         match.documentation = candidate.entry.documentation;
     if (candidate.entry.containerQualifiedName)
         match.containerQualifiedName = candidate.entry.containerQualifiedName;
+    if (candidate.entry.access !== undefined)
+        match.access = candidate.entry.access;
     if (candidate.entry.canBlueprintOverride)
         match.canBlueprintOverride = true;
     if (candidate.entry.isMixin)

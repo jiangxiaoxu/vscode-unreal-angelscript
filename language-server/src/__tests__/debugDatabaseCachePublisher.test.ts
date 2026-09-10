@@ -24,7 +24,7 @@ function fakeCache(revision: string) : DebugDatabaseCacheV2
 {
     return {
         schema: 'unreal-angelscript-debug-database',
-        version: 2,
+        version: 3,
         projectIdentity: 'publisher-test',
         revision,
         contentHash: revision,

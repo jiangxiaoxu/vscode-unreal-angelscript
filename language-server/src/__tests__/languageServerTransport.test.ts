@@ -735,7 +735,7 @@ test('VS Code and project daemon reconnect to a new Editor PID and publish isola
     }
 });
 
-test('one verified socket accepts consecutive native rounds and settles diagnostics for the latest generation', {
+test('one verified socket accepts a delayed optional sidecar and consecutive native rounds', {
     skip: process.platform != 'win32',
     timeout: 20000,
 }, async () => {

@@ -296,6 +296,13 @@ test('GetAPIQuery supports core kinds, visibility, accessor projection, and dedu
         (match.detailsData as unknown[])?.[0],
         match.isCallable,
     ]), [['property', true, 'method', false]]);
+    const accessorAccess = accessor.data.matches[0]?.access;
+    assert.ok(accessorAccess && 'read' in accessorAccess);
+    if (accessorAccess && 'read' in accessorAccess)
+    {
+        assert.equal(accessorAccess.read.normal, 'unknown');
+        assert.equal(accessorAccess.write.normal, 'denied');
+    }
 
     const hidden = GetAPIQuery({ query: 'Secret', kinds: ['method'], limit: 10 });
     assert.equal(hidden.data.total, 0);
@@ -351,6 +358,10 @@ test('API query preserves accessor identity while ordinary non-callable symbols 
     {
         assert.deepEqual(exactMember.data.symbols.map((match) => [match.kind, match.isAccessor, (match.detailsData as unknown[])?.[0]]),
             [['property', true, 'method']]);
+        const exactAccess = exactMember.data.symbols[0]?.access;
+        assert.ok(exactAccess && 'read' in exactAccess);
+        if (exactAccess && 'read' in exactAccess)
+            assert.equal(exactAccess.write.normal, 'denied');
         assert.deepEqual(exactGlobal.data.symbols.map((match) => [match.kind, match.isAccessor, (match.detailsData as unknown[])?.[0]]),
             [['property', true, 'function']]);
     }
@@ -370,6 +381,10 @@ test('API query preserves accessor identity while ordinary non-callable symbols 
     const namespaceDataItems = namespaceData.data.groups[0].members.items;
     assert.deepEqual(typeDataItems.filter((member) => member.name == 'GetValue').map((member) => [member.kind, member.isAccessor, member.isCallable]),
         [['property', true, false]]);
+    const memberAccess = typeDataItems.find((member) => member.name == 'GetValue')?.access;
+    assert.ok(memberAccess && 'read' in memberAccess);
+    if (memberAccess && 'read' in memberAccess)
+        assert.equal(memberAccess.write.normal, 'denied');
     assert.deepEqual(typeDataItems.filter((member) => member.name == 'GetCallableAccessor').map((member) => [member.kind, member.isAccessor, member.isCallable]),
         [['property', true, true]]);
     assert.deepEqual(typeDataItems.filter((member) => member.name == 'OverrideOnly').map((member) => [member.kind, member.isAccessor, member.isCallable]),
@@ -1060,6 +1075,62 @@ test('core LSP handlers are registered and execute through the ready path', asyn
     assert.equal(result?.ok, true);
     const invalid = await handlers.get('angelscript/queryAPI')?.({ query: '' });
     assert.equal(invalid?.code, 0);
+});
+
+test('native API read handlers require complete access readiness while script and hierarchy reads remain available', async () =>
+{
+    FinishTypesFromUnreal();
+    const handlers = new Map<string, (params: any, cancellationToken?: CancellationToken) => any>();
+    const connection = {
+        onRequest(name: string, handler: (params: any, cancellationToken?: CancellationToken) => any): void
+        {
+            handlers.set(name, handler);
+        },
+    };
+    let accessState: 'base-only' | 'pending' | 'complete' | 'failed' = 'failed';
+    registerApiRequestHandlers({
+        connection: connection as any,
+        isUnrealConnected: () => true,
+        getDebugDatabaseAccessReadiness: () => accessState,
+        typesReadyWait: { timeoutMs: 20, pollIntervalMs: 5 },
+    });
+
+    for (const [name, params] of [
+        ['angelscript/queryAPI', { query: 'Run', source: ' NATIVE ' }],
+        ['angelscript/readAPISymbol', { name: 'Core::UBase', source: 'native' }],
+        ['angelscript/getAPISymbolMembers', { name: 'Core::UBase', members: ['callable'], source: 'native' }],
+    ] as const)
+    {
+        const native = await handlers.get(name)?.(params);
+        assert.equal(native?.code, -32003, name);
+        assert.match(native?.message ?? '', /access metadata is not complete.*state=failed/u, name);
+    }
+
+    const script = await handlers.get('angelscript/queryAPI')?.({ query: 'Run', source: ' script ' });
+    assert.equal(script?.data?.matches?.length > 0, true);
+
+    const hierarchy = await handlers.get('angelscript/getAPIClassHierarchy')?.({ name: 'Core::UBase', source: 'native' });
+    assert.equal(hierarchy?.ok, true);
+
+    accessState = 'pending';
+    let waits = 0;
+    registerApiRequestHandlers({
+        connection: connection as any,
+        isUnrealConnected: () => true,
+        getDebugDatabaseAccessReadiness: () => accessState,
+        typesReadyWait: {
+            timeoutMs: 20,
+            pollIntervalMs: 5,
+            wait: async () => {
+                waits += 1;
+                accessState = 'complete';
+                return true;
+            },
+        },
+    });
+    const ready = await handlers.get('angelscript/readAPISymbol')?.({ name: 'Core::UBase', source: 'both' });
+    assert.equal(ready?.ok, true);
+    assert.equal(waits, 1);
 });
 
 test('API handlers return a bounded NotReady ResponseError when Unreal types never become ready', async () =>

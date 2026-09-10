@@ -207,7 +207,7 @@ test('async publication checks the token, atomically renames, and fsyncs the par
         tempPath: 'prepared.tmp',
         envelope: {
             schema: 'unreal-angelscript-debug-database',
-            version: 2,
+            version: 3,
             projectIdentity: 'project-a',
             revision: 'revision',
             contentHash: 'content',

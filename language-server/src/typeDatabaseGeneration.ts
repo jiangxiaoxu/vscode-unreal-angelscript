@@ -1,5 +1,6 @@
 import * as scriptfiles from './as_parser';
 import * as typedb from './database';
+import type { DebugDatabaseAccessChunk } from './accessContract';
 
 export type TypeDatabaseGenerationReset = {
     reparsedModuleCount: number;
@@ -45,7 +46,11 @@ export function validateDebugDatabaseChunks(chunks: readonly unknown[]) : void
     }
 }
 
-export function hydrateTypeDatabaseGeneration(chunks: readonly unknown[], floatIsFloat64: boolean) : void
+export function hydrateTypeDatabaseGeneration(
+    chunks: readonly unknown[],
+    floatIsFloat64: boolean,
+    accessChunks: readonly DebugDatabaseAccessChunk[] = [],
+) : void
 {
     validateDebugDatabaseChunks(chunks);
     resetTypeDatabaseForGeneration();
@@ -53,6 +58,7 @@ export function hydrateTypeDatabaseGeneration(chunks: readonly unknown[], floatI
     {
         for (let chunk of chunks)
             typedb.AddTypesFromUnreal(chunk);
+        typedb.ApplyDebugDatabaseAccess(accessChunks);
         typedb.FinishTypesFromUnreal();
         typedb.AddPrimitiveTypes(floatIsFloat64);
         postProcessScriptTypesForGeneration();

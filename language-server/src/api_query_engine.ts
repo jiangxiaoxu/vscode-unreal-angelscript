@@ -1,5 +1,12 @@
 import * as typedb from './database';
 import { createHash } from 'node:crypto';
+import {
+    accessorPropertyAccess,
+    unknownFunctionAccess,
+    unknownPropertyAccess,
+} from './accessContract';
+import type { FunctionAccess, PropertyAccess } from './accessContract';
+import { GetPropertyAccessorInfo } from './accessor_utils';
 
 export type ApiSearchMode = 'smart' | 'regex';
 export type ApiSearchSource = 'native' | 'script' | 'both';
@@ -69,6 +76,7 @@ export type GetAPISearchMatch = {
     containerQualifiedName?: string;
     source: ApiSearchMatchSource;
     visibility: ApiSearchVisibility;
+    access?: PropertyAccess | FunctionAccess;
     isCallable?: boolean;
     isAccessor?: true;
     isMixin?: boolean;
@@ -204,6 +212,7 @@ type SearchIndexEntry = {
     source: ApiSearchMatchSource;
     filterSource: ApiSearchSource;
     visibility: ApiSearchVisibility;
+    access?: PropertyAccess | FunctionAccess;
     detailsData?: unknown;
     shortName: string;
     shortNameLower: string;
@@ -238,6 +247,7 @@ export type ApiQueryMaterializedEntry = {
     source: ApiSearchMatchSource;
     filterSource: ApiSearchSource;
     visibility: ApiSearchVisibility;
+    access?: PropertyAccess | FunctionAccess;
     detailsData?: unknown;
     declaringTypeQualifiedName?: string;
     isMixin: boolean;
@@ -1495,6 +1505,7 @@ export function ExportAPIQueryMaterializedIndex() : ApiQueryMaterializedIndex
         source: entry.source,
         filterSource: entry.filterSource,
         visibility: entry.visibility,
+        ...(entry.access !== undefined ? { access: entry.access } : {}),
         ...(entry.detailsData !== undefined ? { detailsData: entry.detailsData } : {}),
         ...(entry.declaringTypeQualifiedName ? { declaringTypeQualifiedName: entry.declaringTypeQualifiedName } : {}),
         isMixin: entry.isMixin,
@@ -1704,6 +1715,7 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
     let methodArgs = method.args ? method.args.map((arg) => arg.typename) : [];
     let isCallable = method.isCallable !== false;
     let isAccessor = method.isProperty === true;
+    let accessor = isAccessor ? GetPropertyAccessorInfo(method) : null;
     let detailsData: unknown;
     let qualifiedName = '';
     let containerQualifiedName: string | undefined = undefined;
@@ -1758,6 +1770,9 @@ function createMethodEntry(method: typedb.DBMethod) : SearchIndexEntry
         kind: method.containingType ? 'method' : 'function',
         isCallable,
         isAccessor,
+        access: isAccessor
+            ? (accessor ? accessorPropertyAccess(method.access, accessor.kind) : unknownPropertyAccess())
+            : method.access ?? unknownFunctionAccess(),
         ...(isNativeBlueprintOverrideTarget(method) ? { canBlueprintOverride: true } : {}),
         signature: buildMethodSignature(method),
         summary: extractSummary(documentation),
@@ -1825,6 +1840,7 @@ function createTypePropertyEntry(property: typedb.DBProperty) : SearchIndexEntry
         qualifiedName: `${qualifiedContainer}.${property.name}`,
         kind: 'property',
         isCallable: false,
+        access: property.access ?? unknownPropertyAccess(),
         signature: property.format(`${qualifiedContainer}.`),
         summary: extractSummary(documentation),
         documentation,
@@ -1871,6 +1887,7 @@ function createSearchEntry(input: {
     kind: ApiSearchKind;
     isCallable: boolean;
     isAccessor?: boolean;
+    access?: PropertyAccess | FunctionAccess;
     canBlueprintOverride?: true;
     signature: string;
     summary?: string;
@@ -1902,6 +1919,7 @@ function createSearchEntry(input: {
         kind: input.kind,
         isCallable: input.isCallable,
         isAccessor: input.isAccessor === true,
+        access: input.access,
         canBlueprintOverride: input.canBlueprintOverride,
         signature: input.signature,
         summary: input.summary,
@@ -3245,6 +3263,8 @@ function buildMatch(candidate: SearchCandidate, includeDocs: boolean) : GetAPISe
         match.containerQualifiedName = candidate.entry.containerQualifiedName;
     if (candidate.entry.isCallable !== undefined)
         match.isCallable = candidate.entry.isCallable;
+    if (candidate.entry.access !== undefined)
+        match.access = candidate.entry.access;
     if (candidate.entry.isAccessor)
         match.isAccessor = true;
     if (candidate.entry.canBlueprintOverride)

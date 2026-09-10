@@ -6,6 +6,11 @@ import * as fs from 'fs';
 import * as typedb from './database';
 import { ProcessScriptTypeGeneratedCode } from "./generated_code";
 import { GetPropertyAccessorInfo } from './accessor_utils';
+import {
+    AccessRestrictionCode,
+    scriptFunctionAccess,
+    scriptPropertyAccess,
+} from './accessContract';
 
 let PEGGY_GRAMMAR = require("../pegjs/angelscript.js")
 
@@ -101,6 +106,190 @@ export class ASModule
 
     parseDelay : any = null;
     parseAfterDelay : boolean = false;
+
+    /**
+     * Returns whether this source module is an editor-only module according to
+     * the Engine module naming convention.  `CallInEditor` and other UFUNCTION
+     * metadata are intentionally not considered here.
+     */
+    isEditorOnlyModule() : boolean
+    {
+        return /(^|\.)Editor\./.test(this.modulename ?? '');
+    }
+
+    /**
+     * Checks the narrow source-level `#if EDITOR` condition used by script
+     * modules.  The collector tracks nested conditionals while deliberately
+     * ignoring unrelated preprocessor expressions, since their build-time
+     * value is not available to the language server.
+     */
+    isInsideEditorOnlyRange(startOffset: number, endOffset: number) : boolean
+    {
+        if (!this.content || startOffset < 0 || endOffset <= startOffset)
+            return false;
+        let stack: Array<{ editorCondition: -1 | 0 | 1; parentEditor: boolean; activeEditor: boolean }> = [];
+        let cursor = 0;
+        let lineStart = 0;
+        let activeEditor = false;
+        let inBlockComment = false;
+
+        let normalizeCondition = (expression: string) : string => {
+            let result = expression.trim().replace(/\s+/g, '');
+            while (result.startsWith('(') && result.endsWith(')'))
+            {
+                let depth = 0;
+                let encloses = true;
+                for (let index = 0; index < result.length; index += 1)
+                {
+                    if (result[index] == '(')
+                        depth += 1;
+                    else if (result[index] == ')')
+                    {
+                        depth -= 1;
+                        if (depth == 0 && index != result.length - 1)
+                        {
+                            encloses = false;
+                            break;
+                        }
+                    }
+                }
+                if (!encloses || depth != 0)
+                    break;
+                result = result.substring(1, result.length - 1);
+            }
+            return result;
+        };
+
+        let stripComments = (line: string) : string => {
+            let code = '';
+            let quote: string | null = null;
+            for (let index = 0; index < line.length; index += 1)
+            {
+                let character = line[index];
+                let next = index + 1 < line.length ? line[index + 1] : '';
+                if (inBlockComment)
+                {
+                    if (character == '*' && next == '/')
+                    {
+                        inBlockComment = false;
+                        index += 1;
+                    }
+                    continue;
+                }
+                if (quote)
+                {
+                    code += character;
+                    if (character == '\\')
+                    {
+                        if (index + 1 < line.length)
+                            code += line[++index];
+                    }
+                    else if (character == quote)
+                        quote = null;
+                    continue;
+                }
+                if (character == '"' || character == "'")
+                {
+                    quote = character;
+                    code += character;
+                    continue;
+                }
+                if (character == '/' && next == '/')
+                    break;
+                if (character == '/' && next == '*')
+                {
+                    inBlockComment = true;
+                    index += 1;
+                    continue;
+                }
+                code += character;
+            }
+            return code;
+        };
+
+        let inspectLine = (lineEnd: number) : boolean => {
+            let line = stripComments(this.content.substring(lineStart, lineEnd).replace(/\r$/, ''));
+            let directive = line.match(/^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$/);
+            if (directive)
+            {
+                let kind = directive[1];
+                let expression = normalizeCondition(directive[2]);
+                if (kind == 'if' || kind == 'ifdef' || kind == 'ifndef')
+                {
+                    let editorCondition: -1 | 0 | 1 = 0;
+                    if ((kind == 'if' || kind == 'ifdef') && expression == 'EDITOR')
+                        editorCondition = 1;
+                    else if (kind == 'if' && expression == '!EDITOR')
+                        editorCondition = -1;
+                    else if (kind == 'ifndef' && expression == 'EDITOR')
+                        editorCondition = -1;
+                    let parent = activeEditor;
+                    let frame = {
+                        editorCondition,
+                        parentEditor: parent,
+                        activeEditor: parent || editorCondition == 1,
+                    };
+                    stack.push(frame);
+                    activeEditor = frame.activeEditor;
+                }
+                else if (kind == 'elif' || kind == 'else')
+                {
+                    let frame = stack[stack.length - 1];
+                    if (frame)
+                    {
+                        // Model only exact EDITOR and !EDITOR branches. An
+                        // unrelated condition remains unknown; an alternate
+                        // branch of `#if !EDITOR` is the editor-only branch.
+                        if (kind == 'elif')
+                        {
+                            frame.editorCondition = expression == 'EDITOR'
+                                ? 1
+                                : expression == '!EDITOR' ? -1 : 0;
+                            frame.activeEditor = frame.parentEditor || frame.editorCondition == 1;
+                        }
+                        else
+                        {
+                            frame.activeEditor = frame.parentEditor || frame.editorCondition == -1;
+                        }
+                        activeEditor = frame.activeEditor;
+                    }
+                }
+                else if (kind == 'endif')
+                {
+                    stack.pop();
+                    activeEditor = stack.length > 0 ? stack[stack.length - 1].activeEditor : false;
+                }
+            }
+            lineStart = lineEnd + 1;
+            return activeEditor;
+        };
+
+        while (cursor <= this.content.length)
+        {
+            let nextLine = this.content.indexOf('\n', cursor);
+            if (nextLine < 0)
+                nextLine = this.content.length;
+            let lineActive = activeEditor;
+            let lineEnd = nextLine;
+            if (lineStart <= startOffset && endOffset <= lineEnd && lineActive)
+                return true;
+            inspectLine(nextLine);
+            cursor = nextLine + 1;
+            if (cursor > this.content.length)
+                break;
+        }
+        return false;
+    }
+
+    getScriptFunctionAccessRestrictions(startOffset: number, endOffset: number, isDefaultsOnly: boolean) : AccessRestrictionCode[]
+    {
+        let restrictions: AccessRestrictionCode[] = [];
+        if (isDefaultsOnly)
+            restrictions.push('DefaultsOnly');
+        if (this.isEditorOnlyModule() || this.isInsideEditorOnlyRange(startOffset, endOffset))
+            restrictions.push('EditorOnly');
+        return restrictions;
+    }
 
     rawStatements : Array<ASStatement> = [];
     cachedStatements : Array<ASStatement> = null;
@@ -1799,6 +1988,11 @@ function AddVarDeclToScope(scope : ASScope, statement : ASStatement, vardecl : a
                 dbprop.keywords = keywords.split(" ");
         }
 
+        dbprop.access = scriptPropertyAccess({
+            isConst: dbprop.typename.startsWith('const '),
+            hasCustomAccess: asvar.accessSpecifier?.isDeclared === true,
+        });
+
         if (scope.dbtype)
         {
             scope.dbtype.addSymbol(dbprop);
@@ -2034,8 +2228,19 @@ function GenerateTypeInformation(scope : ASScope)
                         dbfunc.isFinal = true;
                     else if (qual == "override")
                         dbfunc.isOverride = true;
+                    else if (qual == "defaults")
+                        dbfunc.isDefaultsOnly = true;
                 }
             }
+
+            let functionAccessRestrictions = scope.module.getScriptFunctionAccessRestrictions(
+                dbfunc.moduleOffset,
+                dbfunc.moduleOffsetEnd,
+                dbfunc.isDefaultsOnly,
+            );
+            if (dbfunc.accessSpecifier?.isDeclared === true)
+                functionAccessRestrictions.push('CustomAccess');
+            dbfunc.access = scriptFunctionAccess(functionAccessRestrictions);
 
             if (funcdef.scoping)
             {
@@ -2291,6 +2496,7 @@ function GenerateTypeInformation(scope : ASScope)
                         dbprop.declaredModule = scope.module.modulename;
                         dbprop.moduleOffset = statement.start_offset + enumValue.name.start;
                         dbprop.moduleOffsetEnd = statement.start_offset + enumValue.name.end;
+                        dbprop.access = scriptPropertyAccess({ isConst: true });
 
                         scope.dbtype.addSymbol(dbprop);
                     }
@@ -6412,4 +6618,3 @@ export function ParseStatement(scopetype : ASScopeType, statement : ASStatement,
         statement.parseError = true;
     }
 }
-

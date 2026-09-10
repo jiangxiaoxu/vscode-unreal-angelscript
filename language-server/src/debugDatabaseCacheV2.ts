@@ -6,9 +6,10 @@ import { gzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
 import type { AngelScriptLanguageServerBudgets, AngelScriptCacheAccess } from './languageServerContract';
+import { normalizeDebugDatabaseAccessChunk } from './accessContract';
 
 export const DEBUG_DATABASE_CACHE_SCHEMA = 'unreal-angelscript-debug-database';
-export const DEBUG_DATABASE_CACHE_VERSION = 2;
+export const DEBUG_DATABASE_CACHE_VERSION = 3;
 
 export type DebugDatabaseCacheProducer = {
     extensionVersion: string;
@@ -28,7 +29,11 @@ export type DebugDatabaseCacheV2 = {
     scriptSettings: Record<string, boolean>;
     engineSupportsCreateBlueprint: boolean;
     complete: true;
+    /** Explicitly distinguishes a valid legacy/base-only snapshot from a
+     * complete base-plus-access snapshot.  Missing values are invalid. */
+    accessState?: 'base-only' | 'base+access';
     debugDatabaseChunks: unknown[];
+    debugDatabaseAccessChunks?: unknown[];
 };
 
 export type DebugDatabaseCachePayload = Omit<DebugDatabaseCacheV2,
@@ -52,7 +57,7 @@ export type DebugDatabaseCacheContext = {
 export type AtomicWriteOperations = Pick<typeof fs,
     'openSync' | 'writeFileSync' | 'fsyncSync' | 'closeSync' | 'renameSync' | 'unlinkSync'>;
 
-function hashChunks(chunks: readonly unknown[]) : string
+function hashChunks(chunks: unknown) : string
 {
     return createHash('sha256').update(JSON.stringify(chunks)).digest('hex');
 }
@@ -78,7 +83,9 @@ const CACHE_ROOT_KEYS = new Set([
     'scriptSettings',
     'engineSupportsCreateBlueprint',
     'complete',
+    'accessState',
     'debugDatabaseChunks',
+    'debugDatabaseAccessChunks',
 ]);
 
 function validateCreatedAt(value: unknown) : value is string
@@ -118,7 +125,7 @@ function validateProducer(value: unknown) : value is DebugDatabaseCacheProducer
 }
 
 function semanticContentHash(value: Pick<DebugDatabaseCacheV2,
-    'projectIdentity' | 'producer' | 'scriptSettings' | 'engineSupportsCreateBlueprint' | 'complete' | 'debugDatabaseChunks'>) : string
+    'projectIdentity' | 'producer' | 'scriptSettings' | 'engineSupportsCreateBlueprint' | 'complete' | 'accessState' | 'debugDatabaseChunks' | 'debugDatabaseAccessChunks'>) : string
 {
     let canonicalSettings: Record<string, boolean> = {};
     for (let key of SCRIPT_SETTING_KEYS)
@@ -129,14 +136,19 @@ function semanticContentHash(value: Pick<DebugDatabaseCacheV2,
         scriptSettings: canonicalSettings,
         engineSupportsCreateBlueprint: value.engineSupportsCreateBlueprint,
         complete: value.complete,
+        accessState: value.accessState ?? (value.debugDatabaseAccessChunks === undefined ? 'base-only' : 'base+access'),
         debugDatabaseChunks: value.debugDatabaseChunks,
+        debugDatabaseAccessChunks: value.debugDatabaseAccessChunks ?? [],
     };
     return createHash('sha256').update(JSON.stringify(semanticPayload)).digest('hex');
 }
 
-export function createDebugDatabaseRevision(chunks: readonly unknown[]) : string
+export function createDebugDatabaseRevision(
+    chunks: readonly unknown[],
+    accessChunks: readonly unknown[] = [],
+) : string
 {
-    return hashChunks(chunks);
+    return hashChunks({ chunks, accessChunks });
 }
 
 function isObject(value: unknown) : value is Record<string, unknown>
@@ -190,6 +202,7 @@ export function loadDebugDatabaseCacheV2(context: DebugDatabaseCacheContext) : D
         || parsed.version != DEBUG_DATABASE_CACHE_VERSION
         || parsed.complete !== true
         || !Array.isArray(parsed.debugDatabaseChunks)
+        || (parsed.accessState != 'base-only' && parsed.accessState != 'base+access')
         || typeof parsed.projectIdentity != 'string'
         || typeof parsed.revision != 'string'
         || typeof parsed.contentHash != 'string'
@@ -207,6 +220,24 @@ export function loadDebugDatabaseCacheV2(context: DebugDatabaseCacheContext) : D
         if (!isObject(chunk) || Object.entries(chunk).some(([name, record]) => name.length == 0 || !isObject(record)))
             return { ok: false, code: 'invalid-schema', message: `Cache contains an invalid DebugDatabase chunk at index ${chunkIndex}.` };
     }
+    if (parsed.accessState == 'base-only' && parsed.debugDatabaseAccessChunks !== undefined)
+        return { ok: false, code: 'invalid-schema', message: 'Base-only cache cannot contain access records.' };
+    if (parsed.accessState == 'base+access' && !Array.isArray(parsed.debugDatabaseAccessChunks))
+        return { ok: false, code: 'invalid-schema', message: 'Complete access cache must contain an access record array.' };
+    if (parsed.debugDatabaseAccessChunks !== undefined)
+    {
+        if (!Array.isArray(parsed.debugDatabaseAccessChunks))
+            return { ok: false, code: 'invalid-schema', message: 'Cache DebugDatabase access sidecar must be an array.' };
+        try
+        {
+            for (let chunk of parsed.debugDatabaseAccessChunks)
+                normalizeDebugDatabaseAccessChunk(chunk);
+        }
+        catch (error)
+        {
+            return { ok: false, code: 'invalid-schema', message: `Cache access sidecar validation failed: ${String(error)}` };
+        }
+    }
     let compatibility = context.producerCompatibility;
     if (compatibility?.extensionVersionPrefix
         && !parsed.producer.extensionVersion.startsWith(compatibility.extensionVersionPrefix))
@@ -214,7 +245,10 @@ export function loadDebugDatabaseCacheV2(context: DebugDatabaseCacheContext) : D
     if (compatibility?.languageServerCommit
         && parsed.producer.languageServerCommit != compatibility.languageServerCommit)
         return { ok: false, code: 'producer-mismatch', message: 'Cache Language Server producer is incompatible.' };
-    let revision = hashChunks(parsed.debugDatabaseChunks);
+    let revision = createDebugDatabaseRevision(
+        parsed.debugDatabaseChunks as unknown[],
+        (parsed.debugDatabaseAccessChunks as unknown[] | undefined) ?? [],
+    );
     let contentHash = semanticContentHash(parsed as DebugDatabaseCacheV2);
     if (contentHash != parsed.contentHash || parsed.revision != revision)
         return { ok: false, code: 'hash-mismatch', message: 'Cache semantic content hash or DebugDatabase revision does not match.' };
@@ -256,12 +290,30 @@ function createCacheEnvelope(
         if (!isObject(chunk) || Object.entries(chunk).some(([name, record]) => name.length == 0 || !isObject(record)))
             throw new Error(`Debug database contains an invalid chunk at index ${chunkIndex}.`);
     }
+    if (payload.debugDatabaseAccessChunks !== undefined)
+    {
+        if (!Array.isArray(payload.debugDatabaseAccessChunks))
+            throw new Error('Debug database access sidecar must be an array.');
+        for (let chunk of payload.debugDatabaseAccessChunks)
+            normalizeDebugDatabaseAccessChunk(chunk);
+    }
+    let accessState = payload.accessState
+        ?? (payload.debugDatabaseAccessChunks === undefined ? 'base-only' : 'base+access');
+    if (accessState != 'base-only' && accessState != 'base+access')
+        throw new Error('Debug database access state must be base-only or base+access.');
+    if (accessState == 'base-only' && payload.debugDatabaseAccessChunks !== undefined)
+        throw new Error('Base-only debug database cache cannot contain access records.');
+    if (accessState == 'base+access' && !Array.isArray(payload.debugDatabaseAccessChunks))
+        throw new Error('Complete debug database cache requires access records.');
     if (payload.projectIdentity != context.projectIdentity)
         throw new Error('Debug database project identity does not match the cache context.');
     if (!validateProducer(payload.producer) || !validateScriptSettings(payload.scriptSettings))
         throw new Error('Debug database producer or script settings do not match the closed v2 schema.');
 
-    let revision = hashChunks(payload.debugDatabaseChunks);
+    let revision = createDebugDatabaseRevision(
+        payload.debugDatabaseChunks,
+        payload.debugDatabaseAccessChunks ?? [],
+    );
     let envelope: DebugDatabaseCacheV2 = {
         schema: DEBUG_DATABASE_CACHE_SCHEMA,
         version: DEBUG_DATABASE_CACHE_VERSION,
@@ -269,6 +321,7 @@ function createCacheEnvelope(
         contentHash: '',
         createdAt: new Date().toISOString(),
         complete: true,
+        accessState,
         ...payload,
     };
     envelope.contentHash = semanticContentHash(envelope);
@@ -349,7 +402,7 @@ export async function prepareDebugDatabaseCacheV2Temp(
         if (tempReadback.cache.revision != envelope.revision
             || tempReadback.cache.contentHash != envelope.contentHash)
             throw new Error('Temporary cache readback verification failed: content mismatch');
-        let { debugDatabaseChunks: _chunks, ...metadata } = envelope;
+        let { debugDatabaseChunks: _chunks, debugDatabaseAccessChunks: _accessChunks, ...metadata } = envelope;
         return { tempPath, envelope: metadata };
     }
     catch (error)
@@ -432,6 +485,9 @@ export async function saveDebugDatabaseCacheV2Async(
     return {
         ...prepared.envelope,
         debugDatabaseChunks: payload.debugDatabaseChunks,
+        ...(payload.debugDatabaseAccessChunks === undefined ? {} : {
+            debugDatabaseAccessChunks: payload.debugDatabaseAccessChunks,
+        }),
     };
 }
 

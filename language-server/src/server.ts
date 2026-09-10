@@ -68,7 +68,9 @@ const ExtensionVersion = String(require('../../package.json').version);
 
 import {
     Message, MessageType, UnrealMessageDecoder, buildGoTo,
-    buildDisconnect, buildOpenAssets, buildCreateBlueprint
+    buildDisconnect, buildOpenAssets, buildCreateBlueprint,
+    buildLegacyRequestDebugDatabase,
+    readDebugDatabaseAccessFrame, readDebugDatabaseAccessFinishedFrame,
 } from './unreal-buffers';
 
 // Create a connection for the server.
@@ -98,6 +100,7 @@ let ResolveQueueIndex = 0;
 let IsServicingQueues = false;
 
 let ReceivingTypesTimeout : any = null;
+let UnrealSocketEpoch = 0;
 let SetTypeTimeout = false;
 let UnrealTypesTimedOut = false;
 let UnrealConnected = false;
@@ -219,6 +222,7 @@ async function connect_unreal() : Promise<void>
     }
     UnrealConnected = false;
     let connectingSocket = new Socket;
+    UnrealSocketEpoch += 1;
     let messageDecoder = new UnrealMessageDecoder();
     unreal = connectingSocket;
 
@@ -288,12 +292,7 @@ async function connect_unreal() : Promise<void>
                 unrealCacheController.recordDebugDatabaseChunk(dbObj);
 
                 UnrealTypesTimedOut = false;
-                if (ReceivingTypesTimeout)
-                    clearTimeout(ReceivingTypesTimeout);
-                ReceivingTypesTimeout = setTimeout(
-                    DetectUnrealTypeListTimeout,
-                    LANGUAGE_SERVER_TIMEOUTS_MS.debugDatabaseChunkIntermessage,
-                );
+                ArmDebugDatabaseStreamTimeout();
             }
             else if(msg.type == MessageType.DebugDatabaseFinished)
             {
@@ -302,23 +301,55 @@ async function connect_unreal() : Promise<void>
                 if (ReceivingTypesTimeout)
                     clearTimeout(ReceivingTypesTimeout);
                 ReceivingTypesTimeout = null;
+                CommitLegacyDebugDatabaseBase(connectingSocket, UnrealSocketEpoch);
+            }
+            else if(msg.type == MessageType.DebugDatabaseAccessBegin)
+            {
+                if (!unrealCacheController.isRefreshInProgress())
+                    continue;
+                if (msg.remainingSize != 0)
+                {
+                    connection.console.error('DebugDatabase access sidecar begin contains an unsupported payload.');
+                    unrealCacheController.discardDebugDatabaseAccessChunks();
+                    continue;
+                }
+                unrealCacheController.setDebugDatabaseAccessExpected(true);
+                ArmDebugDatabaseStreamTimeout();
+            }
+            else if(msg.type == MessageType.DebugDatabaseAccess)
+            {
+                if (!unrealCacheController.isRefreshInProgress()
+                    || unrealCacheController.getDebugDatabaseAccessReadiness() != 'pending')
+                    continue;
                 try
                 {
-                    let accepted = automationRuntime.commitLiveRefresh();
-                    cancelInitialUnrealConnectionClassification();
-                    ScheduleNativeDiagnosticsRefresh(accepted.generation);
+                    let frame = readDebugDatabaseAccessFrame(msg);
+                    let sidecar = JSON.parse(frame.payload ?? '');
+                    unrealCacheController.recordDebugDatabaseAccessChunk(sidecar);
+                    ArmDebugDatabaseStreamTimeout();
                 }
                 catch (error)
                 {
-                    if (!typedb.HasTypesFromUnreal())
-                        UnrealTypesTimedOut = true;
-                    TrySettleSemanticGeneration();
-                    connection.console.error(`DebugDatabase transaction failed: ${String(error)}`);
-                    resumeRestoredNativeDiagnosticsIfNeeded();
-                    connectingSocket.destroy();
-                    return;
+                    connection.console.error(`DebugDatabase access sidecar ignored: ${String(error)}`);
+                    unrealCacheController.discardDebugDatabaseAccessChunks();
                 }
-                TrySettleSemanticGeneration();
+            }
+            else if(msg.type == MessageType.DebugDatabaseAccessFinished)
+            {
+                if (!unrealCacheController.isRefreshInProgress()
+                    || unrealCacheController.getDebugDatabaseAccessReadiness() != 'pending')
+                    continue;
+                try
+                {
+                    readDebugDatabaseAccessFinishedFrame(msg);
+                    unrealCacheController.finishDebugDatabaseAccess();
+                    ArmDebugDatabaseStreamTimeout();
+                }
+                catch (error)
+                {
+                    connection.console.error(`DebugDatabase access completion ignored: ${String(error)}`);
+                    unrealCacheController.discardDebugDatabaseAccessChunks();
+                }
             }
             else if(msg.type == MessageType.AssetDatabase)
             {
@@ -342,9 +373,6 @@ async function connect_unreal() : Promise<void>
             {
                 // Remove all old asset info from the database, we're receiving new stuff
                 assets.ClearDatabase();
-            }
-            else if(msg.type == MessageType.AssetDatabaseFinished)
-            {
             }
             else if(msg.type == MessageType.DebugDatabaseSettings)
             {
@@ -375,7 +403,8 @@ async function connect_unreal() : Promise<void>
                     pendingSettings.deprecateActorGenerics = msg.readBool();
                     pendingSettings.disallowActorGenerics = msg.readBool();
                 }
-                unrealCacheController.recordDebugDatabaseSettings(pendingSettings, version >= 4);
+                unrealCacheController.recordDebugDatabaseSettings(pendingSettings, version >= 4, false);
+                ArmDebugDatabaseStreamTimeout();
             }
             else if(msg.type == MessageType.ReplaceAssetDefinition)
             {
@@ -495,10 +524,7 @@ async function connect_unreal() : Promise<void>
             LANGUAGE_SERVER_TIMEOUTS_MS.verifiedDebugDatabaseRequestDelay,
             () => unreal === connectingSocket && UnrealConnected && !LanguageServerStopping,
             () => {
-            let reqDb = Buffer.alloc(5);
-            reqDb.writeUInt32LE(1, 0);
-            reqDb.writeUInt8(MessageType.RequestDebugDatabase, 4);
-
+            let reqDb = buildLegacyRequestDebugDatabase();
             connectingSocket.write(Uint8Array.from(reqDb));
             },
         );
@@ -745,6 +771,38 @@ function DetectUnrealTypeListTimeout()
         UnrealTypesTimedOut = true;
     if (unreal)
         unreal.destroy();
+    TrySettleSemanticGeneration();
+}
+
+function ArmDebugDatabaseStreamTimeout() : void
+{
+    if (ReceivingTypesTimeout)
+        clearTimeout(ReceivingTypesTimeout);
+    ReceivingTypesTimeout = setTimeout(
+        DetectUnrealTypeListTimeout,
+        LANGUAGE_SERVER_TIMEOUTS_MS.debugDatabaseChunkIntermessage,
+    );
+}
+
+function CommitLegacyDebugDatabaseBase(socket: Socket, epoch: number) : void
+{
+    if (unreal !== socket || epoch != UnrealSocketEpoch || !unrealCacheController.isRefreshInProgress())
+        return;
+    try
+    {
+        let accepted = automationRuntime.commitLiveRefresh();
+        cancelInitialUnrealConnectionClassification();
+        PendingReResolveAfterInitialParse = false;
+        ScheduleNativeDiagnosticsRefresh(accepted.generation);
+    }
+    catch (error)
+    {
+        if (!typedb.HasTypesFromUnreal())
+            UnrealTypesTimedOut = true;
+        connection.console.error(`DebugDatabase base transaction failed: ${String(error)}`);
+        automationRuntime.abortLiveRefresh('DebugDatabase base transaction failed.');
+        socket.destroy();
+    }
     TrySettleSemanticGeneration();
 }
 
@@ -1519,6 +1577,9 @@ registerApiRequestHandlers({
     connection,
     isUnrealConnected: () => UnrealConnected,
     getFullReadyStatus: () => readinessController.snapshot(),
+    getDebugDatabaseAccessReadiness: () => LanguageServerOptions?.role == 'project-daemon'
+        ? unrealCacheController.getDebugDatabaseAccessReadiness()
+        : 'complete',
 });
 
 connection.languages.inlineValue.on(function (params : InlineValueParams) : Array<InlineValue> {

@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MessageType, UnrealMessageDecoder } from '../unreal-buffers';
+import {
+    MessageType,
+    Message,
+    UnrealMessageDecoder,
+    buildLegacyRequestDebugDatabase,
+    readDebugDatabaseAccessFinishedFrame,
+    readDebugDatabaseAccessFrame,
+} from '../unreal-buffers';
 
 function frame(type: MessageType, payload: Buffer) : Buffer
 {
@@ -40,4 +47,43 @@ test('two sockets can interleave partial frames without sharing decoder state', 
     assert.equal(second.length, 1);
     assert.equal(second[0].type, MessageType.AssetDatabase);
     assert.equal(second[0].buffer.subarray(second[0].offset, second[0].offset + second[0].size).toString(), 'second');
+});
+
+test('legacy base request remains empty and optional access uses appended opcodes', () => {
+    let legacy = buildLegacyRequestDebugDatabase();
+    assert.equal(legacy.readUInt32LE(0), 1);
+    assert.equal(legacy[4], MessageType.RequestDebugDatabase);
+    assert.equal(MessageType.DebugDatabaseAccessBegin, 54);
+    assert.equal(MessageType.DebugDatabaseAccess, 55);
+    assert.equal(MessageType.DebugDatabaseAccessFinished, 56);
+});
+
+test('optional access frames carry tokenless JSON and an empty Finished payload', () => {
+    let json = Buffer.from('{"properties":[],"methods":[]}\0', 'utf8');
+    let jsonLength = Buffer.alloc(4);
+    jsonLength.writeInt32LE(json.length, 0);
+    let access = new UnrealMessageDecoder().push(frame(
+        MessageType.DebugDatabaseAccess,
+        Buffer.concat([jsonLength, json]),
+    ))[0];
+    assert.deepEqual(readDebugDatabaseAccessFrame(access), {
+        payload: '{"properties":[],"methods":[]}',
+    });
+    let finished = new UnrealMessageDecoder().push(frame(
+        MessageType.DebugDatabaseAccessFinished,
+        Buffer.alloc(0),
+    ))[0];
+    assert.deepEqual(readDebugDatabaseAccessFinishedFrame(finished), {});
+});
+
+test('tokenless access parser accepts valid UTF-16 FString payloads', () => {
+    let text = '权限';
+    let encoded = Buffer.from(`${text}\0`, 'utf16le');
+    let length = Buffer.alloc(4);
+    length.writeInt32LE(-(text.length + 1), 0);
+    let message = new UnrealMessageDecoder().push(frame(
+        MessageType.DebugDatabaseAccess,
+        Buffer.concat([length, encoded]),
+    ))[0];
+    assert.deepEqual(readDebugDatabaseAccessFrame(message), { payload: text });
 });

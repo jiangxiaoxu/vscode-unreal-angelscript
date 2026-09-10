@@ -15,10 +15,30 @@ export type ApiRequestHandlerDeps = {
     connection: Connection;
     isUnrealConnected: () => boolean;
     getFullReadyStatus?: () => { fullReady: boolean; stage: string; coverage: string };
+    /** 可选的 native access sidecar readiness; 缺省时保持上游兼容行为. */
+    getDebugDatabaseAccessReadiness?: () => 'base-only' | 'pending' | 'complete' | 'failed';
     typesReadyWait?: TypesReadyWaitOptions;
 };
 
 const API_TYPES_NOT_READY_ERROR_CODE = -32002;
+const API_NATIVE_ACCESS_NOT_READY_ERROR_CODE = -32003;
+
+type ApiSource = 'native' | 'script' | 'both';
+
+function normalizeRequestedSource(params: unknown) : ApiSource | null
+{
+    if (!params || typeof params != 'object' || Array.isArray(params))
+        return null;
+    let value = (params as Record<string, unknown>).source;
+    if (value === undefined)
+        return 'both';
+    if (typeof value != 'string')
+        return null;
+    let source = value.trim().toLowerCase();
+    return source == 'native' || source == 'script' || source == 'both'
+        ? source
+        : null;
+}
 
 function runWhenTypesReady<T>(
     run : () => T,
@@ -26,13 +46,14 @@ function runWhenTypesReady<T>(
         isReady?: () => boolean;
         isTerminalNotReady?: () => boolean;
         describeNotReady?: () => string;
+        notReadyCode?: number;
         cancellationToken?: CancellationToken;
     } = {}
 ) : T | ResponseError<void> | Promise<T | ResponseError<void>>
 {
     let isReady = options.isReady ?? (() => typedb.HasTypesFromUnreal());
     let notReady = () => new ResponseError<void>(
-        API_TYPES_NOT_READY_ERROR_CODE,
+        options.notReadyCode ?? API_TYPES_NOT_READY_ERROR_CODE,
         options.describeNotReady?.() ?? 'NotReady: AngelScript API types are not ready.'
     );
     let cancelled = () => new ResponseError<void>(
@@ -129,6 +150,39 @@ export function registerApiRequestHandlers(deps : ApiRequestHandlerDeps) : void
             }
             : undefined,
     });
+    const runNativeAccessReady = <T>(
+        operation: string,
+        params: unknown,
+        run: () => T,
+        cancellationToken?: CancellationToken,
+    ) => {
+        let source = normalizeRequestedSource(params);
+        if (!deps.getDebugDatabaseAccessReadiness
+            || !(['angelscript/queryAPI', 'angelscript/readAPISymbol', 'angelscript/getAPISymbolMembers'] as readonly string[]).includes(operation)
+            || source == null
+            || source == 'script')
+            return run();
+
+        return runWhenTypesReady(run, {
+            ...deps.typesReadyWait,
+            cancellationToken,
+            notReadyCode: API_NATIVE_ACCESS_NOT_READY_ERROR_CODE,
+            isReady: () => deps.getDebugDatabaseAccessReadiness?.() == 'complete',
+            isTerminalNotReady: () => deps.getDebugDatabaseAccessReadiness?.() == 'failed',
+            describeNotReady: () => {
+                let state = deps.getDebugDatabaseAccessReadiness?.() ?? 'base-only';
+                return `NotReady: Native API access metadata is not complete (state=${state}).`;
+            },
+        });
+    };
+    const runApiRead = <T>(
+        operation: Parameters<typeof executeApiReadOperation>[0],
+        params: unknown,
+        cancellationToken?: CancellationToken,
+    ) => runReady(
+        () => runNativeAccessReady(operation, params, () => runLegacyRead(operation, params), cancellationToken),
+        cancellationToken,
+    );
 
     connection.onRequest("angelscript/getUnrealConnectionStatus", () : boolean => {
         return isUnrealConnected();
@@ -151,15 +205,15 @@ export function registerApiRequestHandlers(deps : ApiRequestHandlerDeps) : void
     });
 
     connection.onRequest("angelscript/queryAPI", (params : unknown, cancellationToken) : any => {
-        return runReady(() => runLegacyRead('angelscript/queryAPI', params), cancellationToken);
+        return runApiRead('angelscript/queryAPI', params, cancellationToken);
     });
 
     connection.onRequest("angelscript/readAPISymbol", (params : unknown, cancellationToken) : any => {
-        return runReady(() => runLegacyRead('angelscript/readAPISymbol', params), cancellationToken);
+        return runApiRead('angelscript/readAPISymbol', params, cancellationToken);
     });
 
     connection.onRequest("angelscript/getAPISymbolMembers", (params : unknown, cancellationToken) : any => {
-        return runReady(() => runLegacyRead('angelscript/getAPISymbolMembers', params), cancellationToken);
+        return runApiRead('angelscript/getAPISymbolMembers', params, cancellationToken);
     });
 
     connection.onRequest("angelscript/getAPIClassHierarchy", (params : unknown, cancellationToken) : any => {

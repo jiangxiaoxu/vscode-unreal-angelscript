@@ -50,6 +50,117 @@ test('beginRefresh atomically revokes ready coverage and the prior revision', ()
     assert.equal(notifications.length, 2);
 });
 
+test('optional access sidecar is committed atomically with the base generation', async () => {
+    ResetDatabaseForTests();
+    let directory = fs.mkdtempSync(path.join(os.tmpdir(), 'as-ls-access-phases-'));
+    try
+    {
+        let cachePath = path.join(directory, 'debug-database.v2.json.gz');
+        let controller = createUnrealCacheController({ publisherRetryDelaysMs: [] });
+        controller.configure({
+            cachePath,
+            access: 'read-write',
+            projectIdentity: directory,
+            budgets: { ...DEFAULT_LANGUAGE_SERVER_BUDGETS },
+        }, { extensionVersion: '1.9.3079', languageServerCommit: 'development' });
+        let generation = controller.beginRefresh();
+        controller.setDebugDatabaseAccessExpected(true);
+        assert.equal(controller.getDebugDatabaseAccessReadiness(), 'pending');
+        controller.recordDebugDatabaseAccessChunk({
+            properties: [{
+                owner: 'UBasePhase',
+                name: 'Value',
+                access: {
+                    read: { normal: 'allow', restricted: 'allow' },
+                    write: { normal: 'allow', restricted: 'allow' },
+                },
+            }],
+        });
+        controller.finishDebugDatabaseAccess();
+        controller.recordDebugDatabaseChunk(nativeType('UBasePhase'));
+        let accepted = controller.acceptCompleteCandidate();
+        assert.equal(accepted.generation, generation);
+        assert.equal(controller.getDebugDatabaseAccessReadiness(), 'complete');
+        assert.equal(await controller.flushPersistence(5000), true);
+        let loaded = loadDebugDatabaseCacheV2({
+            cachePath,
+            access: 'read-write',
+            projectIdentity: directory,
+            budgets: { ...DEFAULT_LANGUAGE_SERVER_BUDGETS },
+        });
+        assert.equal(loaded.ok, true);
+        if (loaded.ok)
+            assert.equal(loaded.cache.accessState, 'base+access');
+        await controller.shutdownPersistence(1000);
+    }
+    finally
+    {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('base-only refresh stays full-ready when the Engine omits optional access', () => {
+    ResetDatabaseForTests();
+    let connection = {
+        sendNotification() {},
+        onRequest() {},
+        languages: { diagnostics: { on() {}, onWorkspace() {} } },
+        console: { error() {}, warn() {} },
+    } as any;
+    let runtime = createLanguageServerAutomationRuntime(connection, '1.9.3079');
+    runtime.beginLiveRefresh();
+    runtime.cache.recordDebugDatabaseChunk(nativeType('UBaseOnly'));
+    let accepted = runtime.commitLiveRefresh();
+    runtime.completeNativeRefresh(accepted.generation);
+    runtime.markCurrentGenerationFullReady();
+    let status = runtime.readiness.snapshot();
+    assert.equal(status.generation, accepted.generation);
+    assert.equal(status.fullReady, true);
+    assert.equal(runtime.cache.getDebugDatabaseAccessReadiness(), 'base-only');
+});
+
+test('optional access enrichment keeps the base semantic generation and diagnostics', () => {
+    ResetDatabaseForTests();
+    let connection = {
+        sendNotification() {},
+        onRequest() {},
+        languages: { diagnostics: { on() {}, onWorkspace() {} } },
+        console: { error() {}, warn() {} },
+    } as any;
+    let runtime = createLanguageServerAutomationRuntime(connection, '1.9.3079');
+    runtime.beginLiveRefresh();
+    runtime.cache.setDebugDatabaseAccessExpected(true);
+    runtime.cache.recordDebugDatabaseAccessChunk({
+        properties: [{
+            owner: 'UEnriched',
+            name: 'Value',
+            access: {
+                read: { normal: 'allow', restricted: 'allow' },
+                write: { normal: 'allow', restricted: 'allow' },
+            },
+        }],
+    });
+    runtime.cache.finishDebugDatabaseAccess();
+    runtime.cache.recordDebugDatabaseChunk(nativeType('UEnriched'));
+    let accepted = runtime.commitLiveRefresh();
+    let diagnostic = {
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
+        message: 'base diagnostic',
+        severity: 1,
+    } as any;
+    runtime.updateDiagnostics('file:///Enriched.as', [diagnostic]);
+    assert.equal(runtime.cache.getDebugDatabaseAccessReadiness(), 'complete');
+    assert.equal(runtime.cache.getGeneration(), accepted.generation);
+    runtime.completeNativeRefresh(accepted.generation);
+    runtime.markCurrentGenerationFullReady();
+    let report = runtime.getWorkspaceDiagnosticsReport();
+    assert.ok(report.items[0] && 'items' in report.items[0]);
+    if (report.items[0] && 'items' in report.items[0])
+        assert.equal(report.items[0].items[0]?.message, 'base diagnostic');
+    assert.equal(runtime.readiness.snapshot().fullReady, true);
+    assert.equal(runtime.readiness.snapshot().generation, accepted.generation);
+});
+
 test('semantic generations remain unsettled until parsing and resolution explicitly finish', () => {
     let readiness = createLanguageServerReadinessController(() => {});
     readiness.markFullReady();
@@ -108,16 +219,40 @@ test('cache publication is fenced by generation and cannot publish mixed chunks'
         assert.equal(generation2, generation1 + 1);
         controller.recordDebugDatabaseChunk(nativeType('UGeneration2First'));
         controller.recordDebugDatabaseChunk(nativeType('UGeneration2Second'));
+        controller.setDebugDatabaseAccessExpected(true);
+        controller.recordDebugDatabaseAccessChunk({
+            properties: [{
+                owner: 'UGeneration2First',
+                name: 'Value',
+                access: {
+                    read: { normal: 'allow', restricted: 'allow' },
+                    write: { normal: 'allow', restricted: 'allow' },
+                },
+            }],
+        });
+        controller.finishDebugDatabaseAccess();
         controller.acceptCompleteCandidate();
         assert.equal(await controller.flushPersistence(5000), true);
 
         let loaded = loadDebugDatabaseCacheV2(context);
         assert.equal(loaded.ok, true);
         if (loaded.ok)
+        {
             assert.deepEqual(loaded.cache.debugDatabaseChunks, [
                 nativeType('UGeneration2First'),
                 nativeType('UGeneration2Second'),
             ]);
+            assert.deepEqual(loaded.cache.debugDatabaseAccessChunks, [{
+                properties: [{
+                    owner: 'UGeneration2First',
+                    name: 'Value',
+                    access: {
+                        read: { normal: 'allowed', restricted: 'allowed' },
+                        write: { normal: 'allowed', restricted: 'allowed' },
+                    },
+                }],
+            }]);
+        }
     }
     finally
     {
